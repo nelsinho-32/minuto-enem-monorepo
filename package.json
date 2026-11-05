@@ -1,0 +1,31 @@
+{
+  "name": "minuto-enem-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Monorepo unificado do Minuto ENEM (apps/web, apps/api e packages/shared)",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "clean": "turbo run clean",
+    "dev:web": "npm run dev --workspace=@minuto-enem/web",
+    "dev:api": "npm run dev --workspace=@minuto-enem/api",
+    "build:shared": "npm run build --workspace=@minuto-enem/shared",
+    "seed": "npm run seed --workspace=@minuto-enem/api",
+    "db:seed": "npm run db:seed --workspace=@minuto-enem/api"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.0",
+    "typescript": "^5.8.2"
+  },
+  "dependencies": {
+    "zod": "^3.25.76"
+  },
+  "packageManager": "npm@11.9.0"
+}
+

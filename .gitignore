@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Turborepo & Builds
+.turbo/
+dist/
+build/
+web-build/
+.expo/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Logs & OS
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+uploads/*
+!uploads/.gitkeep
+
+enem-backend/
+extrator-enem/
+minuto-enem/
+questoes/
