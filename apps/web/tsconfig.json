@@ -1,0 +1,20 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "paths": {
+      "@/*": ["./src/*"],
+      "@/assets/*": ["./assets/*"],
+      "@minuto-enem/shared": ["../../packages/shared/src/index.ts"],
+      "@minuto-enem/shared/*": ["../../packages/shared/src/*"]
+    }
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    ".expo/types/**/*.ts",
+    "expo-env.d.ts",
+    "../../packages/shared/src/**/*.ts"
+  ],
+  "exclude": ["node_modules", "backend"]
+}

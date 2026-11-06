@@ -1,0 +1,470 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  SCHOOL
+  TEACHER
+  STUDENT
+}
+
+enum MaterialType {
+  VIDEO
+  PDF
+  ARTICLE
+  TIP
+  EXTERNAL_LINK
+}
+
+enum AnnouncementAudience {
+  ALL
+  TEACHERS_ONLY
+}
+
+model School {
+  id            String         @id @default(uuid())
+  name          String
+  cnpj          String?        @unique
+  code          String         @unique
+  slug          String         @unique
+  isActive      Boolean        @default(true)
+  settings      Json?          @default("{}")
+  users         User[]
+  classrooms    Classroom[]
+  announcements Announcement[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @default(now()) @updatedAt
+
+  @@index([code])
+  @@index([slug])
+  @@index([isActive])
+  @@index([createdAt])
+}
+
+model User {
+  id                 String            @id @default(uuid())
+  name               String
+  email              String            @unique
+  password           String
+  role               Role              @default(STUDENT)
+  schoolId           String?
+  school             School?           @relation(fields: [schoolId], references: [id], onDelete: SetNull)
+  xp                 Int               @default(0)
+  currentStreak      Int               @default(0)
+  longestStreak      Int               @default(0)
+  iceFreezes         Int               @default(0)
+  lastStudyDate      DateTime?
+  createdClassrooms  Classroom[]       @relation("TeacherClassrooms")
+  enrolledClassrooms Classroom[]       @relation("StudentClassrooms")
+  questionAttempts   QuestionAttempt[]
+  flashcardReviews   FlashcardReview[]
+  notes              Note[]
+  trailProgresses    TrailProgress[]
+  streakLogs         StreakLog[]
+  offlineSyncLogs    OfflineSyncLog[]
+  duelParticipations DuelPlayer[]
+  wonDuels           DuelMatch[]       @relation("DuelWinner")
+  taskSubmissions    TaskSubmission[]
+  announcements      Announcement[]
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @default(now()) @updatedAt
+
+  @@index([role])
+  @@index([schoolId])
+  @@index([xp])
+  @@index([currentStreak])
+  @@index([lastStudyDate])
+  @@index([createdAt])
+}
+
+model Announcement {
+  id             String               @id @default(uuid())
+  schoolId       String
+  school         School               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  title          String
+  content        String               @db.Text
+  targetAudience AnnouncementAudience @default(ALL)
+  authorId       String?
+  author         User?                @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @default(now()) @updatedAt
+
+  @@index([schoolId])
+  @@index([targetAudience])
+  @@index([createdAt])
+}
+
+model Classroom {
+  id        String   @id @default(uuid())
+  name      String
+  code      String   @unique
+  schoolId  String?
+  school    School?  @relation(fields: [schoolId], references: [id], onDelete: SetNull)
+  teacherId String
+  teacher   User     @relation("TeacherClassrooms", fields: [teacherId], references: [id], onDelete: Cascade)
+  students  User[]   @relation("StudentClassrooms")
+  tasks     Task[]
+  lessons   Lesson[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@index([schoolId])
+  @@index([teacherId])
+  @@index([code])
+  @@index([createdAt])
+}
+
+model Class {
+  id        String @id @default(uuid())
+  code      String @unique
+  name      String
+  teacherId String
+
+  @@index([teacherId])
+}
+
+model Task {
+  id              String           @id @default(uuid())
+  title           String           @default("")
+  description     String?          @db.Text
+  topic           String
+  subjectId       String?
+  subject         Subject?         @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  topicId         String?
+  topicRef        Topic?           @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  creationMode    String           @default("MANUAL_SELECTION") // "MANUAL_SELECTION" | "RANDOM_BY_TOPIC" | "CUSTOM_TEACHER_QUESTIONS" | "AI_GENERATED"
+  difficulty      String?          // "EASY" | "MEDIUM" | "HARD"
+  total           Int              @default(0)
+  questionIds     String[]         @default([])
+  customQuestions Json?
+  dueDate         DateTime?
+  status          String           @default("APPROVED") // "PENDING_APPROVAL" | "APPROVED" | "COMPLETED"
+  classId         String
+  classroomId     String?
+  classroom       Classroom?       @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  submissions     TaskSubmission[]
+  attempts        QuestionAttempt[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @default(now()) @updatedAt
+
+  @@index([classroomId])
+  @@index([subjectId])
+  @@index([topicId])
+  @@index([classId])
+  @@index([status])
+  @@index([dueDate])
+  @@index([createdAt])
+}
+
+model TaskSubmission {
+  id              String   @id @default(uuid())
+  taskId          String
+  task            Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  studentId       String
+  student         User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  score           Float    @default(0)
+  correctCount    Int      @default(0)
+  totalQuestions  Int      @default(0)
+  accuracyPercent Float    @default(0)
+  timeSpentMs     Int?
+  status          String   @default("CORRIGIDO") // "PENDENTE" | "CORRIGIDO" | "COMPLETED"
+  answers         Json?
+  xpEarned        Int      @default(0)
+  submittedAt     DateTime @default(now())
+  updatedAt       DateTime @default(now()) @updatedAt
+
+  @@unique([taskId, studentId])
+  @@index([taskId])
+  @@index([studentId])
+  @@index([status])
+  @@index([submittedAt])
+}
+
+model Note {
+  id        String   @id @default(uuid())
+  title     String
+  content   String   @db.Text
+  tags      String[] @default([])
+  lessonId  String?
+  lesson    Lesson?  @relation(fields: [lessonId], references: [id], onDelete: SetNull)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([lessonId])
+  @@index([userId, createdAt])
+}
+
+model Trail {
+  id          String          @id @default(uuid())
+  title       String
+  description String?         @db.Text
+  area        String
+  subjectId   String?
+  subject     Subject?        @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  lessonIds   String[]        @default([])
+  questionIds String[]        @default([])
+  totalSteps  Int             @default(1)
+  progresses  TrailProgress[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([subjectId])
+  @@index([area])
+  @@index([createdAt])
+}
+
+model TrailProgress {
+  id                 String   @id @default(uuid())
+  userId             String
+  trailId            String
+  completedSteps     Int      @default(0)
+  completedLessonIds String[] @default([])
+  progressPercent    Float    @default(0)
+  status             String   @default("IN_PROGRESS") // "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED"
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trail              Trail    @relation(fields: [trailId], references: [id], onDelete: Cascade)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([userId, trailId])
+  @@index([userId])
+  @@index([trailId])
+  @@index([status])
+  @@index([progressPercent])
+}
+
+model Question {
+  id               String            @id @default(uuid())
+  year             Int
+  area             String
+  subject          String
+  topic            String?
+  subjectId        String?
+  subjectRef       Subject?          @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  topicId          String?
+  topicRef         Topic?            @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  lessonId         String?
+  lesson           Lesson?           @relation(fields: [lessonId], references: [id], onDelete: SetNull)
+  difficulty       String?
+  text             String            @db.Text
+  options          Json
+  correctAnswer    Int
+  explanation      String?           @db.Text
+  errorRate        Float?
+  attempts         QuestionAttempt[]
+  flashcardReviews FlashcardReview[]
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @default(now()) @updatedAt
+
+  @@index([subject])
+  @@index([subjectId])
+  @@index([topicId])
+  @@index([lessonId])
+  @@index([area])
+  @@index([year])
+  @@index([difficulty])
+  @@index([errorRate])
+  @@index([subject, area])
+  @@index([year, area])
+}
+
+model QuestionAttempt {
+  id               String          @id @default(uuid())
+  userId           String
+  questionId       String
+  selectedAnswer   Int
+  isCorrect        Boolean
+  timeSpentMs      Int?
+  xpEarned         Int             @default(0)
+  source           String          @default("QUIZ") // "QUIZ" | "DUEL" | "OFFLINE_SYNC" | "FLASHCARD" | "TASK"
+  taskId           String?
+  task             Task?           @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  offlineSyncLogId String?
+  offlineSyncLog   OfflineSyncLog? @relation(fields: [offlineSyncLogId], references: [id], onDelete: SetNull)
+  createdAt        DateTime        @default(now())
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([questionId])
+  @@index([taskId])
+  @@index([userId, isCorrect])
+  @@index([userId, createdAt])
+  @@index([questionId, isCorrect])
+  @@index([offlineSyncLogId])
+  @@index([source])
+}
+
+model OfflineSyncLog {
+  id               String            @id @default(uuid())
+  idempotencyKey   String            @unique
+  userId           String
+  status           String            @default("SYNCED") // "PENDING" | "SYNCED" | "FAILED"
+  itemsCount       Int               @default(1)
+  payload          Json?
+  errorMessage     String?
+  clientAnsweredAt DateTime?
+  syncedAt         DateTime          @default(now())
+  createdAt        DateTime          @default(now())
+  attempts         QuestionAttempt[]
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([idempotencyKey])
+  @@index([status])
+  @@index([syncedAt])
+}
+
+model Subject {
+  id        String     @id @default(uuid())
+  name      String
+  slug      String     @unique
+  icon      String     @default("book")
+  topics    Topic[]
+  lessons   Lesson[]
+  questions Question[]
+  trails    Trail[]
+  tasks     Task[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @default(now()) @updatedAt
+
+  @@index([slug])
+}
+
+model Topic {
+  id          String     @id @default(uuid())
+  name        String
+  slug        String
+  description String?    @db.Text
+  subjectId   String
+  subject   Subject    @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  lessons   Lesson[]
+  questions Question[]
+  tasks     Task[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @default(now()) @updatedAt
+
+  @@unique([subjectId, slug])
+  @@index([subjectId])
+  @@index([slug])
+  @@index([name])
+}
+
+model Lesson {
+  id          String       @id @default(uuid())
+  title       String
+  type        MaterialType @default(ARTICLE)
+  description String?      @db.Text
+  content     String       @db.Text
+  fileUrl     String?
+  youtubeUrl  String?
+  videos      String[]     @default([]) // Array nativo para os vídeos
+  references  String[]     @default([]) // Array nativo para os livros
+  subjectId   String?
+  subject     Subject?     @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  topicId     String?
+  topic       Topic?       @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  classroomId String?
+  classroom   Classroom?   @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  questions   Question[]
+  notes       Note[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @default(now()) @updatedAt
+
+  @@index([subjectId])
+  @@index([topicId])
+  @@index([classroomId])
+  @@index([type])
+  @@index([title])
+}
+
+model FlashcardReview {
+  id             String    @id @default(uuid())
+  userId         String
+  questionId     String
+  repetition     Int       @default(0)
+  interval       Int       @default(0)
+  easeFactor     Float     @default(2.5)
+  nextReviewDate DateTime  @default(now())
+  lastReviewedAt DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, questionId])
+  @@index([userId, nextReviewDate])
+  @@index([questionId])
+}
+
+model StreakLog {
+  id             String   @id @default(uuid())
+  userId         String
+  date           DateTime @db.Date
+  status         String   @default("COMPLETED") // "COMPLETED" | "FROZEN" | "BROKEN"
+  streakCount    Int      @default(0)
+  iceFreezesLeft Int      @default(0)
+  activityType   String?  // "LESSON" | "QUESTION" | "DUEL" | "LOGIN_FREEZE"
+  createdAt      DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([userId])
+  @@index([date])
+  @@index([status])
+}
+
+model DuelMatch {
+  id             String       @id @default(uuid())
+  matchId        String       @unique // ex: "duel_a8f3b9c1"
+  subject        String?
+  status         String       @default("FINISHED") // "WAITING" | "IN_PROGRESS" | "FINISHED" | "CANCELLED"
+  winnerId       String?
+  isDraw         Boolean      @default(false)
+  totalQuestions Int          @default(5)
+  questionIds    String[]     @default([])
+  startedAt      DateTime     @default(now())
+  finishedAt     DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @default(now()) @updatedAt
+
+  winner  User?        @relation("DuelWinner", fields: [winnerId], references: [id], onDelete: SetNull)
+  players DuelPlayer[]
+
+  @@index([matchId])
+  @@index([winnerId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model DuelPlayer {
+  id           String    @id @default(uuid())
+  duelMatchId  String
+  userId       String
+  score        Float     @default(0)
+  correctCount Int       @default(0)
+  xpEarned     Int       @default(0)
+  triScore     Float?
+  answers      Json?     // Lista detalhada de respostas e tempos do jogador no duelo
+  createdAt    DateTime  @default(now())
+
+  duelMatch DuelMatch @relation(fields: [duelMatchId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([duelMatchId, userId])
+  @@index([duelMatchId])
+  @@index([userId])
+  @@index([score])
+}
