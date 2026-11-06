@@ -3,8 +3,12 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "lib": ["ES2022"],
+    "lib": [
+      "ES2022"
+    ],
     "strict": true,
+    "noImplicitAny": true,
+    "exactOptionalPropertyTypes": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
@@ -13,9 +17,20 @@
     "declarationMap": true,
     "sourceMap": true,
     "paths": {
-      "@minuto-enem/shared": ["./packages/shared/src/index.ts"],
-      "@minuto-enem/shared/*": ["./packages/shared/src/*"]
+      "@minuto-enem/shared": [
+        "./packages/shared/src/index.ts"
+      ],
+      "@minuto-enem/shared/*": [
+        "./packages/shared/src/*"
+      ]
     }
   },
-  "exclude": ["node_modules", "dist", ".turbo", "extrator-enem", "questoes"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    ".turbo",
+    "extrator-enem",
+    "questoes"
+  ],
+  "extends": "expo/tsconfig.base"
 }

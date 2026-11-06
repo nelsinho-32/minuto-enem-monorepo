@@ -1,5 +1,6 @@
 export * from "./schemas/user.schema";
 export * from "./schemas/auth.schema";
+export * from "./schemas/school.schema";
 export * from "./schemas/option.schema";
 export * from "./schemas/question.schema";
 export * from "./schemas/subject.schema";
@@ -11,3 +12,4 @@ export * from "./schemas/note.schema";
 export * from "./schemas/streak.schema";
 export * from "./schemas/duel.schema";
 export * from "./schemas/sync.schema";
+export * from "./schemas/announcement.schema";
