@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { essayController } from "../controllers/essay.controller";
 import { auth } from "../middlewares/auth.middleware";
+import { uploadRateLimiter } from "../middlewares/rate-limit.middleware";
 import { uploadEssayImageMiddleware } from "../middlewares/upload.middleware";
 
 const essayRoutes = Router();
@@ -20,10 +21,10 @@ essayRoutes.get("/task/:taskId/my", (req, res) =>
 );
 
 // Envio de foto da redação pelo aluno (multipart/form-data ou json com imageUrl)
-essayRoutes.post("/", uploadEssayImageMiddleware, (req, res) =>
+essayRoutes.post("/", uploadRateLimiter, uploadEssayImageMiddleware, (req, res) =>
   essayController.submit(req, res)
 );
-essayRoutes.post("/upload", uploadEssayImageMiddleware, (req, res) =>
+essayRoutes.post("/upload", uploadRateLimiter, uploadEssayImageMiddleware, (req, res) =>
   essayController.submit(req, res)
 );
 

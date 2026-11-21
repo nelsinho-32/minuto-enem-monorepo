@@ -35,34 +35,100 @@ import { essayRoutes } from "./routes/essay.routes";
 import { chatRoutes } from "./routes/chat.routes";
 import { streakService } from "./services/streak.service";
 import { questionService } from "./services/question.service";
+import { getActiveStorageProviderName } from "./services/storage.service";
 import { questionController } from "./controllers/question.controller";
 import { setupDuelWebSocket } from "./websocket/duel.socket";
 import { setupChatWebSocket } from "./websocket/chat.socket";
+import { socketAuthMiddleware } from "./websocket/socket-auth.middleware";
+import { apiGeneralRateLimiter } from "./middlewares/rate-limit.middleware";
 
-// 1. Configuração do Servidor HTTP, Express, CORS e WebSocket (Socket.io)
+// 1. Configuração de CORS flexível (múltiplas origens separadas por vírgula e curingas de túnel/subdomínio)
+function buildCorsOriginValidator():
+  | string
+  | ((origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => void) {
+  const rawCors = (process.env.CORS_ORIGIN || "*").trim();
+  if (!rawCors || rawCors === "*") {
+    return "*";
+  }
+
+  const allowedPatterns = rawCors
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  return (origin, callback) => {
+    // Permite clientes nativos (Expo Go / iOS / Android / curl) sem header Origin
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    const isAllowed = allowedPatterns.some((pattern) => {
+      if (pattern === "*") return true;
+      if (pattern.startsWith("*.")) {
+        const suffix = pattern.slice(1).toLowerCase();
+        try {
+          const parsed = new URL(origin);
+          return parsed.hostname.toLowerCase().endsWith(suffix);
+        } catch {
+          return origin.toLowerCase().endsWith(suffix);
+        }
+      }
+      return origin.replace(/\/+$/, "") === pattern.replace(/\/+$/, "");
+    });
+
+    if (isAllowed) {
+      return callback(null, true);
+    }
+
+    // Em desenvolvimento, libera localhost automaticamente
+    if (
+      process.env.NODE_ENV !== "production" &&
+      /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)
+    ) {
+      return callback(null, true);
+    }
+
+    return callback(new Error(`Origem CORS não autorizada: ${origin}`), false);
+  };
+}
+
+// 2. Configuração do Servidor HTTP, Express, CORS e WebSocket (Socket.io)
 const app = express();
+app.set(
+  "trust proxy",
+  process.env.TRUST_PROXY !== undefined
+    ? Number(process.env.TRUST_PROXY) || process.env.TRUST_PROXY === "true"
+    : 1
+);
 const httpServer = http.createServer(app);
+const corsOriginConfig = buildCorsOriginValidator();
 
 export const io = new SocketIOServer(httpServer, {
   cors: {
-    origin: process.env.CORS_ORIGIN || "*",
+    origin: corsOriginConfig,
     methods: ["GET", "POST"],
   },
 });
 
+// Middleware único de autenticação JWT para todas as conexões WebSocket (Chat + Duelo)
+io.use(socketAuthMiddleware);
 setupDuelWebSocket(io);
 setupChatWebSocket(io);
+
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN || "*",
+    origin: corsOriginConfig,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
-app.use(express.json());
+app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || "2mb" }));
 
 // Middleware de rastreamento de requisições e escopo do Sentry
 app.use(sentryRequestHandler);
+
+// Proteção geral de Rate Limiting (ignora mídias estáticas e /health)
+app.use(apiGeneralRateLimiter);
 
 // Servir arquivos estáticos da pasta de uploads (PDFs e documentos didáticos)
 const uploadsDir = path.resolve(process.cwd(), "uploads");
@@ -101,10 +167,32 @@ app.use((req, _res, next) => {
 // ROTAS DA NOSSA API
 // ==========================================
 
-// Rota de Teste
+// Rota de Teste e Healthcheck completo de Infraestrutura
 app.get("/", (req, res) => {
   res.send("API do App do ENEM rodando perfeitamente! 🚀");
 });
+
+const healthCheckHandler = async (_req: express.Request, res: express.Response) => {
+  let dbStatus: "ok" | "error" = "ok";
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+  } catch {
+    dbStatus = "error";
+  }
+
+  return res.status(dbStatus === "ok" ? 200 : 503).json({
+    status: dbStatus === "ok" ? "ok" : "degraded",
+    uptimeSeconds: Math.round(process.uptime()),
+    database: dbStatus,
+    storageProvider: getActiveStorageProviderName(),
+    rateLimitEnabled: process.env.DISABLE_RATE_LIMIT !== "true",
+    websocketAuth: true,
+    lanUrl: `http://${getLocalIpAddress()}:${PORT}`,
+    timestamp: new Date().toISOString(),
+  });
+};
+app.get("/health", healthCheckHandler);
+app.get("/api/health", healthCheckHandler);
 
 // Rotas de Autenticação (suporta /, /auth, /api e /api/auth), Salas, Questões e Ofensiva (Streak)
 app.use("/", authRoutes);
@@ -329,19 +417,43 @@ const HOST = "0.0.0.0";
 
 function getLocalIpAddress(): string {
   const interfaces = os.networkInterfaces();
-  for (const name of Object.keys(interfaces)) {
-    for (const iface of interfaces[name] || []) {
+  const candidates: Array<{ address: string; score: number }> = [];
+
+  for (const [name, list] of Object.entries(interfaces)) {
+    const lower = name.toLowerCase();
+    const isVirtual =
+      lower.includes("vethernet") ||
+      lower.includes("docker") ||
+      lower.includes("wsl") ||
+      lower.includes("vmware") ||
+      lower.includes("virtualbox") ||
+      lower.includes("hyper-v") ||
+      lower.includes("tailscale");
+
+    for (const iface of list || []) {
       if (
         iface.family === "IPv4" &&
         !iface.internal &&
-        !iface.address.startsWith("169.254.") &&
-        !iface.address.startsWith("172.")
+        !iface.address.startsWith("169.254.")
       ) {
-        return iface.address;
+        let score = 0;
+        if (lower.includes("wi-fi") || lower.includes("wifi") || lower.includes("wlan")) {
+          score += 50;
+        } else if (lower.includes("ethernet") || lower.includes("en0")) {
+          score += 40;
+        }
+        if (isVirtual) score -= 100;
+        if (iface.address.startsWith("192.168.")) score += 20;
+        else if (iface.address.startsWith("10.")) score += 15;
+        else if (iface.address.startsWith("172.")) score -= 10;
+
+        candidates.push({ address: iface.address, score });
       }
     }
   }
-  return "localhost";
+
+  candidates.sort((a, b) => b.score - a.score);
+  return candidates[0]?.address || "localhost";
 }
 
 httpServer.listen(PORT, HOST, () => {
@@ -349,8 +461,9 @@ httpServer.listen(PORT, HOST, () => {
   console.log(`🚀 API e WebSocket (Socket.io) rodando localmente em: http://localhost:${PORT}`);
   console.log(`📱 API na rede Wi-Fi (Expo/Celular): http://${localIp}:${PORT}`);
   console.log(
-    `📚 Busque as questões em: http://${localIp}:${PORT}/api/questions`,
+    `📦 Storage ativo: ${getActiveStorageProviderName().toUpperCase()} | Rate Limit: ${process.env.DISABLE_RATE_LIMIT === "true" ? "OFF" : "ON"} | WebSocket JWT Auth: ON`
   );
+  console.log(`🩺 Healthcheck: http://${localIp}:${PORT}/health`);
 
   // Rotina diária (a cada 24h) para verificação de inatividade da ofensiva
   setInterval(() => {

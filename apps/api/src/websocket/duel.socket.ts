@@ -1,6 +1,5 @@
 import crypto from "crypto";
 import { Server, Socket } from "socket.io";
-import jwt from "jsonwebtoken";
 import {
   JoinMatchPayloadSchema,
   SubmitDuelAnswerPayloadSchema,
@@ -11,125 +10,27 @@ import {
 import { prisma } from "../lib/prisma";
 import { streakService } from "../services/streak.service";
 import { triService } from "../services/tri.service";
+import type { SocketUserContext } from "./socket-auth.middleware";
 
 export type { DuelPlayerState, DuelMatchRoom } from "@minuto-enem/shared";
 
-interface AuthenticatedSocketData {
-  user: {
-    id: string;
-    name: string;
-    email: string;
-    role: string;
-  };
-}
-
-const JWT_SECRET = process.env.JWT_SECRET || "enem-super-secret-jwt-key-2026";
 const activeMatches = new Map<string, DuelMatchRoom>();
 
 /**
  * Configuração do WebSocket para o modo Duelo (Socket.io)
  * Inclui:
- * 1. Autenticação JWT obrigatória via handshake
+ * 1. Uso do usuário validado pelo `socketAuthMiddleware` global no handshake
  * 2. Pareamento (matchmaking) em salas de 2 jogadores (suporta join_match e join_duel_queue)
  * 3. Sorteio aleatório de questões reais do ENEM via Prisma
  * 4. Transmissão do placar em tempo real (scoreboard_update e opponent_progress)
  * 5. Persistência do resultado e estatísticas da partida no banco de dados (DuelMatch e DuelPlayer)
  */
 export function setupDuelWebSocket(io: Server): void {
-  // ==========================================
-  // MIDDLEWARE DE AUTENTICAÇÃO JWT VIA HANDSHAKE
-  // ==========================================
-  io.use(async (socket: Socket, next) => {
-    try {
-      const authHeader =
-        socket.handshake.auth?.token ||
-        socket.handshake.headers?.authorization ||
-        (socket.handshake.query?.token as string | undefined);
-
-      if (
-        !authHeader ||
-        authHeader === "guest" ||
-        authHeader === "null" ||
-        authHeader === "undefined"
-      ) {
-        const guestId =
-          socket.handshake.auth?.userId &&
-          socket.handshake.auth.userId !== "guest"
-            ? socket.handshake.auth.userId
-            : `guest_${socket.id.slice(0, 6)}`;
-        const guestName = socket.handshake.auth?.userName || "Estudante";
-
-        socket.data = {
-          ...socket.data,
-          user: {
-            id: guestId,
-            name: guestName,
-            email: `${guestId}@minutoenem.com`,
-            role: "STUDENT",
-          },
-        } as AuthenticatedSocketData;
-        return next();
-      }
-
-      const token = authHeader.startsWith("Bearer ")
-        ? authHeader.split(" ")[1]
-        : authHeader;
-
-      try {
-        const decoded = jwt.verify(token, JWT_SECRET) as {
-          id: string;
-          email: string;
-          role: string;
-        };
-
-        if (decoded?.id) {
-          const user = await prisma.user.findUnique({
-            where: { id: decoded.id },
-            select: { id: true, name: true, email: true, role: true },
-          });
-
-          if (user) {
-            socket.data = {
-              ...socket.data,
-              user,
-            } as AuthenticatedSocketData;
-            return next();
-          }
-        }
-      } catch {
-        // Fallback para sessão convidado se token for inválido
-      }
-
-      const guestId =
-        socket.handshake.auth?.userId || `guest_${socket.id.slice(0, 6)}`;
-      const guestName = socket.handshake.auth?.userName || "Estudante";
-
-      socket.data = {
-        ...socket.data,
-        user: {
-          id: guestId,
-          name: guestName,
-          email: `${guestId}@minutoenem.com`,
-          role: "STUDENT",
-        },
-      } as AuthenticatedSocketData;
-
-      return next();
-    } catch (err: any) {
-      console.warn(
-        `⚠️ [Socket.io Auth Error] Falha de autenticação no socket ${socket.id}: ${err.message}`
-      );
-      return next();
-    }
-  });
-
   io.on("connection", (socket: Socket) => {
-    const authUser = socket.data?.user as
-      | AuthenticatedSocketData["user"]
-      | undefined;
+    const authUser = socket.data?.user as SocketUserContext | undefined;
 
     console.log(
-      `⚡ [Socket.io] Conexão autenticada: ${socket.id} | Usuário: ${authUser?.name || "Desconhecido"} (${authUser?.id})`
+      `⚡ [Socket.io] Conexão ${authUser?.isAuthenticated ? "autenticada" : "convidada"}: ${socket.id} | Usuário: ${authUser?.name || "Desconhecido"} (${authUser?.id})`
     );
 
     /**

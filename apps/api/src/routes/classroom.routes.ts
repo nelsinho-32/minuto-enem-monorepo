@@ -8,6 +8,7 @@ import {
   requireRole,
   requireClassroomTeacherScope,
 } from "../middlewares/auth.middleware";
+import { uploadRateLimiter } from "../middlewares/rate-limit.middleware";
 import { uploadPdfMiddleware } from "../middlewares/upload.middleware";
 
 const classroomRoutes = Router();
@@ -62,6 +63,7 @@ classroomRoutes.post(
   "/:id/materials/upload-pdf",
   auth,
   isTeacher,
+  uploadRateLimiter,
   uploadPdfMiddleware,
   (req, res) => classroomController.uploadPdf(req, res)
 );
@@ -69,6 +71,7 @@ classroomRoutes.post(
   "/:id/upload-pdf",
   auth,
   isTeacher,
+  uploadRateLimiter,
   uploadPdfMiddleware,
   (req, res) => classroomController.uploadPdf(req, res)
 );

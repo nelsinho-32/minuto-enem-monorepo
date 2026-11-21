@@ -79,6 +79,7 @@ export default function UserChatsAndForumScreen() {
   const isWide = width >= 820;
 
   const user = useUserStore((s) => s.user);
+  const token = useUserStore((s) => s.token);
   const {
     globalRoom,
     classroomRooms,
@@ -184,15 +185,23 @@ export default function UserChatsAndForumScreen() {
     }
   }, [mainTab, hasJoinedForum, globalRoom?.id]);
 
-  // Conexão Socket.IO em tempo real
+  // Conexão Socket.IO em tempo real autenticada com JWT
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || !token) return;
 
     const socket = io(BASE_URL, {
       transports: ['websocket', 'polling'],
+      auth: { token },
       reconnectionAttempts: 10,
     });
     socketRef.current = socket;
+
+    socket.on('connect', () => {
+      const currentRoom = useChatStore.getState().activeRoomId;
+      if (currentRoom) {
+        socket.emit('chat:join_room', { roomId: currentRoom });
+      }
+    });
 
     socket.on('chat:new_message', (msg: ChatMessageItem) => {
       appendIncomingMessage(msg);
@@ -214,11 +223,17 @@ export default function UserChatsAndForumScreen() {
       }
     );
 
+    socket.on('chat:error', (payload: { error?: string }) => {
+      if (payload?.error) {
+        console.warn('[Chat Socket Error]:', payload.error);
+      }
+    });
+
     return () => {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [user?.id, appendIncomingMessage, updateMessageLikes]);
+  }, [user?.id, token, appendIncomingMessage, updateMessageLikes]);
 
   // Entra e sai da sala ativa via Socket.IO
   useEffect(() => {

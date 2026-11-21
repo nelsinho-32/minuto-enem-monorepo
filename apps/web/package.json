@@ -5,6 +5,7 @@
   "private": true,
   "scripts": {
     "dev": "expo start",
+    "dev:tunnel": "expo start --tunnel",
     "start": "expo start",
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
