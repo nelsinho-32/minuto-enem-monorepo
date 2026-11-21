@@ -102,34 +102,6 @@ function addDaysToDateStr(dateStr: string, days: number): string {
   return formatLocalDate(dt);
 }
 
-function buildInitialDemoState() {
-  const today = new Date();
-  const todayStr = formatLocalDate(today);
-  const dayOfWeek = today.getDay();
-
-  const history: Record<string, 'COMPLETED' | 'FROZEN'> = {};
-
-  for (let i = 1; i <= dayOfWeek; i++) {
-    const pastDate = new Date(today);
-    pastDate.setDate(today.getDate() - i);
-    const key = formatLocalDate(pastDate);
-    history[key] = i === 2 ? 'FROZEN' : 'COMPLETED';
-  }
-
-  const yesterday = new Date(today);
-  yesterday.setDate(today.getDate() - 1);
-
-  return {
-    currentStreak: Math.max(dayOfWeek, 3),
-    longestStreak: 12,
-    lastStudyDate: dayOfWeek > 0 ? formatLocalDate(yesterday) : todayStr,
-    iceFreezes: 2,
-    streakHistory: history,
-  };
-}
-
-const initialDemo = buildInitialDemoState();
-
 export const useUserStore = create<UserState>()(
   persist(
     (set, get) => ({
@@ -147,6 +119,11 @@ export const useUserStore = create<UserState>()(
           token,
           user,
           userId: user.id,
+          xp: user.xp ?? get().xp ?? 0,
+          currentStreak: user.currentStreak ?? get().currentStreak ?? 0,
+          streak: user.currentStreak ?? get().streak ?? 0,
+          longestStreak: user.longestStreak ?? get().longestStreak ?? 0,
+          iceFreezes: user.iceFreezes ?? get().iceFreezes ?? 0,
           avatar: savedAvatar,
         });
         useClassroomStore.getState().fetchClassrooms();
@@ -158,23 +135,32 @@ export const useUserStore = create<UserState>()(
         set({
           token: null,
           user: null,
-          userId: 'demo-user-id',
+          userId: '',
+          xp: 0,
+          answeredQuestionsCount: 0,
+          streak: 0,
+          currentStreak: 0,
+          longestStreak: 0,
+          lastStudyDate: null,
+          iceFreezes: 0,
+          streakHistory: {},
+          avatar: null,
         });
       },
 
-      userId: 'demo-user-id',
+      userId: '',
       xp: 0,
-      answeredQuestionsCount: 47,
+      answeredQuestionsCount: 0,
       incrementAnsweredQuestions: () =>
         set((state) => ({ answeredQuestionsCount: state.answeredQuestionsCount + 1 })),
-      streak: initialDemo.currentStreak,
+      streak: 0,
       lastQuizSession: null,
       setLastQuizSession: (session) => set({ lastQuizSession: session }),
-      currentStreak: initialDemo.currentStreak,
-      longestStreak: initialDemo.longestStreak,
-      lastStudyDate: initialDemo.lastStudyDate,
-      iceFreezes: initialDemo.iceFreezes,
-      streakHistory: initialDemo.streakHistory,
+      currentStreak: 0,
+      longestStreak: 0,
+      lastStudyDate: null,
+      iceFreezes: 0,
+      streakHistory: {},
       avatar: null,
       avatarsByUser: {},
       targetCourse: 'Medicina',

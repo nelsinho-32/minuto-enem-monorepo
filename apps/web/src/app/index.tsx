@@ -23,42 +23,12 @@ import { useClassroomStore } from "@/store/useClassroomStore";
 import { SchoolMuralCard } from "@/components/SchoolMuralCard";
 import { ElasticSearchBar } from "@/components/ElasticSearchBar";
 import { NotificationsModal } from "@/components/NotificationsModal";
+import {
+  getSubjectVisualTheme as getSubjectTheme,
+  type EnemAreaFilter as AreaFilter,
+} from "@/constants/theme";
 
 type HomeTab = "INICIO" | "MATERIAS" | "TURMA";
-type AreaFilter = "TODAS" | "LINGUAGENS" | "HUMANAS" | "NATUREZA" | "MATEMATICA";
-
-function getSubjectTheme(slug: string, name: string) {
-  const lower = (slug + " " + name).toLowerCase();
-  if (lower.includes("matem"))
-    return { icon: "calculator", color: "#0284C7", area: "MATEMATICA" as AreaFilter };
-  if (lower.includes("redac") || lower.includes("redaç"))
-    return { icon: "pen-fancy", color: "#7C3AED", area: "LINGUAGENS" as AreaFilter };
-  if (lower.includes("portug") || lower.includes("língua"))
-    return { icon: "book-open", color: "#E11D48", area: "LINGUAGENS" as AreaFilter };
-  if (lower.includes("literat"))
-    return { icon: "book", color: "#E11D48", area: "LINGUAGENS" as AreaFilter };
-  if (lower.includes("arte"))
-    return { icon: "palette", color: "#EC4899", area: "LINGUAGENS" as AreaFilter };
-  if (lower.includes("ingl") || lower.includes("espanh") || lower.includes("idiom"))
-    return { icon: "globe", color: "#F43F5E", area: "LINGUAGENS" as AreaFilter };
-  if (lower.includes("físic") && lower.includes("educ"))
-    return { icon: "running", color: "#F97316", area: "LINGUAGENS" as AreaFilter };
-  if (lower.includes("histór") || lower.includes("histor"))
-    return { icon: "landmark", color: "#D97706", area: "HUMANAS" as AreaFilter };
-  if (lower.includes("geograf"))
-    return { icon: "map", color: "#EA580C", area: "HUMANAS" as AreaFilter };
-  if (lower.includes("filosof"))
-    return { icon: "brain", color: "#B45309", area: "HUMANAS" as AreaFilter };
-  if (lower.includes("sociolog"))
-    return { icon: "users", color: "#D97706", area: "HUMANAS" as AreaFilter };
-  if (lower.includes("biolog"))
-    return { icon: "leaf", color: "#16A34A", area: "NATUREZA" as AreaFilter };
-  if (lower.includes("químic") || lower.includes("quimic"))
-    return { icon: "flask", color: "#059669", area: "NATUREZA" as AreaFilter };
-  if (lower.includes("físic") || lower.includes("fisic"))
-    return { icon: "atom", color: "#10B981", area: "NATUREZA" as AreaFilter };
-  return { icon: "graduation-cap", color: "#0284C7", area: "TODAS" as AreaFilter };
-}
 
 function getGreeting(): string {
   const hour = new Date().getHours();

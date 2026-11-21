@@ -77,6 +77,18 @@ if (!fs.existsSync(essaysDir)) {
 app.use("/uploads", express.static(uploadsDir));
 app.use("/api/uploads", express.static(uploadsDir));
 
+// Servir imagens locais oficiais das provas do ENEM (2009–2023)
+const enemMediaCandidates = [
+  path.resolve(process.cwd(), "questoes/enem-api/public"),
+  path.resolve(process.cwd(), "../../questoes/enem-api/public"),
+  path.resolve(__dirname, "../../../questoes/enem-api/public"),
+];
+const enemMediaDir = enemMediaCandidates.find((p) => fs.existsSync(p));
+if (enemMediaDir) {
+  app.use("/enem-media", express.static(enemMediaDir));
+  app.use("/api/enem-media", express.static(enemMediaDir));
+}
+
 // Log de requisições para facilitar o diagnóstico de rotas chamadas pelo frontend
 app.use((req, _res, next) => {
   console.log(

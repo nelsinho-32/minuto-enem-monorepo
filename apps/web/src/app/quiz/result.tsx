@@ -14,6 +14,7 @@ import { api } from "@/services/api";
 import { useUserStore } from "@/store/useUserStore";
 import { QuizHeader } from "@/components/QuizHeader";
 import { OptionButton } from "@/components/OptionButton";
+import { QuestionContentRenderer } from "@/components/QuestionContentRenderer";
 import { useQuestionsQuery } from "@/hooks/useQuestionsQuery";
 
 const OPTION_LETTERS = ["A", "B", "C", "D", "E"];
@@ -279,9 +280,10 @@ export default function ResultScreen() {
                   {/* Detalhes Expandidos da Questão */}
                   {isExpanded && (
                     <View style={styles.reviewCardBody}>
-                      <Text style={styles.reviewQuestionText}>
-                        {item.text}
-                      </Text>
+                      <QuestionContentRenderer
+                        text={item.text || ""}
+                        fontSize={15}
+                      />
 
                       {/* Alternativas renderizadas com OptionButton */}
                       <View style={{ marginVertical: 12 }}>

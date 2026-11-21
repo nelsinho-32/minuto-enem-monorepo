@@ -457,7 +457,10 @@ export class SearchService {
 
     // F) QUESTÕES DO ENEM
     for (const q of matchingQuestions) {
-      const cleanText = q.text.replace(/\s+/g, " ").trim();
+      const cleanText = q.text
+        .replace(/!\[.*?\]\(.*?\)/g, "[Imagem]")
+        .replace(/\s+/g, " ")
+        .trim();
       const score = computeElasticScore(
         rawQuery,
         `${q.subject} ENEM ${q.year}`,

@@ -16,6 +16,7 @@ import { FontAwesome5 } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { safeAsyncStorage as AsyncStorage } from '@/services/safeStorage';
 import { api } from '@/services/api';
+import { QuestionContentRenderer } from '@/components/QuestionContentRenderer';
 
 const CORRECT_FAVORITES_CACHE_KEY = '@minuto_enem:correct_favorites_v1';
 
@@ -262,7 +263,9 @@ export default function CorrectAnswersScreen() {
                     </View>
                   </View>
 
-                  <Text style={styles.questionText}>{question.text}</Text>
+                  <View style={{ marginBottom: 14 }}>
+                    <QuestionContentRenderer text={question.text} />
+                  </View>
 
                   <View style={styles.correctOptionBox}>
                     <FontAwesome5

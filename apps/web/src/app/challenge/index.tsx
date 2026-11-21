@@ -18,6 +18,11 @@ import { type ArenaStatus, type DuelOutcome, type QuizQuestion } from '@minuto-e
 import { DuelProgressBar } from '@/components/DuelProgressBar';
 import { DuelResultAnimation } from '@/components/DuelResultAnimation';
 import { CreateRoomButton } from '@/components/CreateRoomButton';
+import {
+  QuestionContentRenderer,
+  AutoSizedQuestionImage,
+  splitMarkdownSegments,
+} from '@/components/QuestionContentRenderer';
 
 const FALLBACK_DUEL_QUESTIONS: QuizQuestion[] = [
   {
@@ -706,14 +711,15 @@ export default function ChallengeMultiplayerArenaScreen() {
               </Text>
             </View>
 
-            <Text style={styles.questionPrompt}>
-              {duelQuestions[currentIdx].text}
-            </Text>
+            <View style={{ marginBottom: 18 }}>
+              <QuestionContentRenderer text={duelQuestions[currentIdx].text} />
+            </View>
 
             <View style={styles.optionsList}>
               {duelQuestions[currentIdx].options.map((opt, idx) => {
                 const isSelected = selectedOption === idx;
                 const isCorrect = idx === duelQuestions[currentIdx].correctAnswer;
+                const hasOptImage = typeof opt === 'string' && opt.includes('![');
 
                 let btnStyle: any = styles.optionBtn;
                 let txtStyle: any = styles.optionTxt;
@@ -741,7 +747,26 @@ export default function ChallengeMultiplayerArenaScreen() {
                         {String.fromCharCode(65 + idx)}
                       </Text>
                     </View>
-                    <Text style={txtStyle}>{opt}</Text>
+                    {hasOptImage ? (
+                      <View style={{ flex: 1 }}>
+                        {splitMarkdownSegments(opt).map((seg, sIdx) =>
+                          seg.type === 'image' ? (
+                            <AutoSizedQuestionImage
+                              key={`duel-opt-img-${sIdx}`}
+                              rawUrl={seg.url}
+                              altText={seg.alt}
+                              compact
+                            />
+                          ) : (
+                            <Text key={`duel-opt-txt-${sIdx}`} style={txtStyle}>
+                              {seg.content}
+                            </Text>
+                          )
+                        )}
+                      </View>
+                    ) : (
+                      <Text style={txtStyle}>{opt}</Text>
+                    )}
                     {isAnswered && isCorrect && (
                       <FontAwesome5 name="check-circle" size={18} color="#58CC02" />
                     )}

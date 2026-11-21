@@ -424,6 +424,9 @@ async function main() {
     totalSubjectsUpserted++;
 
     if (Array.isArray(subject.lessons)) {
+      const validLessonIds: string[] = [];
+      const validTopicIds: string[] = [];
+
       for (const lesson of subject.lessons) {
         const { title: cleanTitle, content: cleanContent } =
           extractCleanTitleAndContent(lesson.title, lesson.content);
@@ -446,6 +449,7 @@ async function main() {
             name: cleanTitle,
           },
         });
+        validTopicIds.push(topicRecord.id);
 
         const existingLesson = await prisma.lesson.findFirst({
           where: {
@@ -466,8 +470,9 @@ async function main() {
               topicId: topicRecord.id,
             },
           });
+          validLessonIds.push(existingLesson.id);
         } else {
-          await prisma.lesson.create({
+          const createdLesson = await prisma.lesson.create({
             data: {
               title: cleanTitle,
               content: cleanContent,
@@ -478,8 +483,28 @@ async function main() {
               topicId: topicRecord.id,
             },
           });
+          validLessonIds.push(createdLesson.id);
         }
         totalLessonsUpserted++;
+      }
+
+      // Remove aulas de sistema antigas/obsoletas que não pertencem mais ao materias.json atual
+      if (validLessonIds.length > 0) {
+        await prisma.lesson.deleteMany({
+          where: {
+            subjectId: subjectRecord.id,
+            classroomId: null,
+            id: { notIn: validLessonIds },
+          },
+        });
+      }
+      if (validTopicIds.length > 0) {
+        await prisma.topic.deleteMany({
+          where: {
+            subjectId: subjectRecord.id,
+            id: { notIn: validTopicIds },
+          },
+        });
       }
     }
   }
@@ -501,21 +526,52 @@ async function main() {
 
   const rawQuestions: RawQuestionData[] = JSON.parse(
     fs.readFileSync(questionsPath, "utf-8")
-  );
+  ).map((q: RawQuestionData) => ({
+    ...q,
+    text: String(q.text || "")
+      .replace(/!\[[^\]]*\]\([^)]*broken-image\.svg[^)]*\)/gi, "")
+      .trim(),
+    options: Array.isArray(q.options)
+      ? q.options.map((opt) =>
+          String(opt || "")
+            .replace(/!\[[^\]]*\]\([^)]*broken-image\.svg[^)]*\)/gi, "")
+            .trim()
+        )
+      : [],
+  }));
 
-  // Importa também provas oficiais recentes do ENEM (2019 a 2023) presentes em questoes/enem-api/public
+  // Importa todas as provas oficiais do ENEM (2009–2014 e 2018–2023) presentes em questoes/enem-api/public
   const enemApiDir = path.resolve(__dirname, "../../../questoes/enem-api/public");
-  const recentYears = [2019, 2020, 2021, 2022, 2023];
+  const allExamYears = [2009, 2010, 2011, 2012, 2013, 2014, 2018, 2019, 2020, 2021, 2022, 2023];
   const letterToIdx: Record<string, number> = { A: 0, B: 1, C: 2, D: 3, E: 4 };
+
+  const sanitizeMarkdownImages = (raw: string, questionDir: string): string => {
+    if (!raw) return "";
+    return raw
+      .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (fullMatch, _alt, rawUrl) => {
+        const cleanUrl = String(rawUrl || "").trim();
+        if (!cleanUrl || cleanUrl.toLowerCase().includes("broken-image.svg")) {
+          return "";
+        }
+        const fileName = cleanUrl.split("/").pop();
+        if (fileName && fs.existsSync(path.join(questionDir, fileName))) {
+          return fullMatch;
+        }
+        return "";
+      })
+      .trim();
+  };
 
   if (fs.existsSync(enemApiDir)) {
     let addedFromExams = 0;
-    for (const yr of recentYears) {
+    let withImagesCount = 0;
+    for (const yr of allExamYears) {
       const qRoot = path.join(enemApiDir, String(yr), "questions");
       if (!fs.existsSync(qRoot)) continue;
       const entries = fs.readdirSync(qRoot);
       for (const entry of entries) {
-        const detailPath = path.join(qRoot, entry, "details.json");
+        const questionDir = path.join(qRoot, entry);
+        const detailPath = path.join(questionDir, "details.json");
         if (!fs.existsSync(detailPath)) continue;
         try {
           const item = JSON.parse(fs.readFileSync(detailPath, "utf-8"));
@@ -523,13 +579,31 @@ async function main() {
           if (correctIdx === undefined) continue;
           const alts = Array.isArray(item.alternatives) ? item.alternatives : [];
           if (alts.length !== 5) continue;
-          const optionTexts = alts.map((a: any) => String(a.text || "").trim());
+
+          const optionTexts = alts.map((a: any) => {
+            const txt = sanitizeMarkdownImages(String(a.text || "").trim(), questionDir);
+            let fileMarkdown = "";
+            if (a.file && !String(a.file).toLowerCase().includes("broken-image.svg")) {
+              const fileName = String(a.file).trim().split("/").pop();
+              if (fileName && fs.existsSync(path.join(questionDir, fileName))) {
+                fileMarkdown = `![](${String(a.file).trim()})`;
+              }
+            }
+            return [txt, fileMarkdown].filter(Boolean).join("\n").trim();
+          });
           if (optionTexts.some((t: string) => !t)) continue;
 
-          const ctx = String(item.context || "").replace(/!\[.*?\]\(.*?\)/g, "").trim();
-          const intro = String(item.alternativesIntroduction || "").trim();
+          const ctx = sanitizeMarkdownImages(String(item.context || ""), questionDir);
+          const intro = sanitizeMarkdownImages(
+            String(item.alternativesIntroduction || ""),
+            questionDir
+          );
           const fullText = [ctx, intro].filter(Boolean).join("\n\n").trim();
-          if (fullText.length < 25) continue;
+          if (fullText.length < 15) continue;
+
+          if (fullText.includes("![") || optionTexts.some((o: string) => o.includes("!["))) {
+            withImagesCount++;
+          }
 
           rawQuestions.push({
             year: yr,
@@ -537,7 +611,7 @@ async function main() {
             text: fullText,
             options: optionTexts,
             correctAnswer: correctIdx,
-            explanation: `Questão oficial do ENEM ${yr} (${item.title || ""}). Gabarito oficial: alternativa ${item.correctAlternative}.`,
+            explanation: `Questão oficial do ENEM ${yr} (${item.title || `Questão ${entry}`}). Gabarito oficial: alternativa ${item.correctAlternative}.`,
             errorRate: 48.0,
           });
           addedFromExams++;
@@ -546,12 +620,36 @@ async function main() {
         }
       }
     }
-    console.log(`📚 +${addedFromExams} questões oficiais do ENEM (2019–2023) adicionadas ao lote!`);
+    console.log(
+      `📚 +${addedFromExams} questões oficiais do ENEM (2009–2023) adicionadas ao lote (${withImagesCount} com imagens reais verificadas)!`
+    );
   }
 
   console.log(`📄 Total de questões a processar: ${rawQuestions.length}`);
 
-  const BATCH_SIZE = 25;
+  // Higieniza eventuais questões antigas no banco que possuíam placeholder broken-image.svg
+  const brokenQuestionsInDb = await prisma.question.findMany({
+    where: { text: { contains: "broken-image.svg" } },
+    select: { id: true, text: true, options: true },
+  });
+  for (const bq of brokenQuestionsInDb) {
+    const cleanedText = bq.text
+      .replace(/!\[[^\]]*\]\([^)]*broken-image\.svg[^)]*\)/gi, "")
+      .trim();
+    const cleanedOpts = Array.isArray(bq.options)
+      ? (bq.options as string[]).map((o) =>
+          String(o || "")
+            .replace(/!\[[^\]]*\]\([^)]*broken-image\.svg[^)]*\)/gi, "")
+            .trim()
+        )
+      : bq.options;
+    await prisma.question.update({
+      where: { id: bq.id },
+      data: { text: cleanedText, options: cleanedOpts as any },
+    });
+  }
+
+  const BATCH_SIZE = 50;
   let totalQuestionsProcessed = 0;
 
   for (let i = 0; i < rawQuestions.length; i += BATCH_SIZE) {
@@ -570,13 +668,25 @@ async function main() {
 
         const triMetrics = triService.calculateQuestionWeight(rawErrorRate);
 
-        const existingQuestion = await tx.question.findFirst({
+        let existingQuestion = await tx.question.findFirst({
           where: {
             year: q.year || 2015,
             text: q.text,
             correctAnswer: q.correctAnswer,
           },
         });
+
+        // Caso a questão já tenha sido importada anteriormente sem as tags de imagem (![]()),
+        // localiza pelo ano + gabarito + explicação oficial ou texto sem imagens para atualizar in-place
+        if (!existingQuestion && q.year && q.year !== 2015 && q.explanation) {
+          existingQuestion = await tx.question.findFirst({
+            where: {
+              year: q.year,
+              correctAnswer: q.correctAnswer,
+              explanation: q.explanation,
+            },
+          });
+        }
 
         if (existingQuestion) {
           await tx.question.update({
@@ -586,6 +696,7 @@ async function main() {
               subject: detectedSubjectName,
               difficulty: triMetrics.difficultyTier,
               errorRate: triMetrics.errorRate,
+              text: q.text,
               options: q.options,
               explanation: q.explanation || "Resolução indisponível no momento.",
             },
@@ -780,6 +891,46 @@ async function main() {
   console.log(
     `✅ [Etapa 3 Concluída] ${totalTrailsCreated} Trilhas de Estudo criadas e associadas com sucesso!`
   );
+
+  // =========================================================================
+  // ETAPA 4: MURAL DE AVISOS (EXEMPLO TEMA DA REDAÇÃO ENEM 2026)
+  // =========================================================================
+  const muralTitle = "Tema da Redação ENEM 2026 — Prática na Oficina Nota 1000";
+  const muralContent =
+    "Atenção, estudantes e professores! Já está em destaque no nosso mural a proposta modelo sobre o tema da redação do ENEM 2026: \"Caminhos para combater a desinformação algorítmica e fortalecer a educação midiática no Brasil\".\n\n" +
+    "• Alunos: revisem os repertórios socioculturais (Byung-Chul Han, Paulo Freire e Constituição Federal de 1988) e enviem sua folha manuscrita na Oficina Nota 1000 dentro da sua turma.\n" +
+    "• Professores: acompanhem os envios pendentes para correção comentada nas 5 competências oficiais (0 a 1000 pontos).";
+
+  let schools = await prisma.school.findMany({ select: { id: true } });
+  if (schools.length === 0) {
+    const defaultSchool = await prisma.school.upsert({
+      where: { code: "MINUTO-ENEM" },
+      create: {
+        name: "Rede Minuto ENEM",
+        code: "MINUTO-ENEM",
+        slug: "rede-minuto-enem",
+        isActive: true,
+      },
+      update: {},
+      select: { id: true },
+    });
+    schools = [defaultSchool];
+  }
+  for (const s of schools) {
+    const existingAnn = await prisma.announcement.findFirst({
+      where: { schoolId: s.id, title: muralTitle },
+    });
+    if (!existingAnn) {
+      await prisma.announcement.create({
+        data: {
+          schoolId: s.id,
+          title: muralTitle,
+          content: muralContent,
+          targetAudience: "ALL",
+        },
+      });
+    }
+  }
 
   console.log("\n==================================================");
   console.log("🎉 SEED DO MINUTO ENEM FINALIZADO COM SUCESSO!");

@@ -19,6 +19,7 @@ import { api } from "@/services/api";
 import { useUserStore } from "@/store/useUserStore";
 import { QuizHeader } from "@/components/QuizHeader";
 import { OptionButton } from "@/components/OptionButton";
+import { QuestionContentRenderer } from "@/components/QuestionContentRenderer";
 import { useQuestionsQuery, QuizQuestion } from "@/hooks/useQuestionsQuery";
 import { isDeviceOnline } from "@/services/network";
 import {
@@ -555,26 +556,7 @@ export default function QuizScreen() {
             )}
           </View>
 
-          <Markdown
-            style={markdownStyles as any}
-            rules={{
-              image: (node) => (
-                <Image
-                  key={node.key}
-                  source={{ uri: node.attributes.src }}
-                  style={{
-                    width: width - 48,
-                    height: height * 0.3,
-                    marginVertical: 14,
-                    borderRadius: 12,
-                  }}
-                  resizeMode="contain"
-                />
-              ),
-            }}
-          >
-            {(question.text || " ").replace(/\]\(\/\//g, "](https://")}
-          </Markdown>
+          <QuestionContentRenderer text={question.text || ""} />
         </View>
 
         {/* 2. ALTERNATIVAS USANDO O COMPONENTE OptionButton */}

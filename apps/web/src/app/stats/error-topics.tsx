@@ -18,6 +18,7 @@ import {
   ErrorStatsApiResponse,
   fetchErrorStatsFromApi,
 } from '@/app/stats/errors';
+import { QuestionContentRenderer } from '@/components/QuestionContentRenderer';
 
 function formatSeconds(totalSeconds: number): string {
   const mins = Math.floor(totalSeconds / 60);
@@ -391,7 +392,9 @@ export default function ErrorTopicsScreen() {
                             </View>
                           </View>
 
-                          <Text style={styles.questionText}>{question.text}</Text>
+                          <View style={{ marginBottom: 14 }}>
+                            <QuestionContentRenderer text={question.text} />
+                          </View>
 
                           <View style={styles.contrastContainer}>
                             <View style={styles.contrastRow}>

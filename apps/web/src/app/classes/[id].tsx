@@ -25,26 +25,15 @@ import { ConfirmModal } from '@/components/ConfirmModal';
 import { EmbeddedVideoPlayer } from '@/components/EmbeddedVideoPlayer';
 import { PdfViewerModal } from '@/components/PdfViewerModal';
 import { EssaySubmissionModal } from '@/components/EssaySubmissionModal';
+import {
+  ClassroomFeedTab,
+  type ClassroomPost,
+  type PostComment,
+} from '@/components/classroom/ClassroomFeedTab';
+import { ClassroomStudentsTab } from '@/components/classroom/ClassroomStudentsTab';
+import { ClassroomReadingModal } from '@/components/classroom/ClassroomReadingModal';
 import { api } from '@/services/api';
 import { saveTasksLocal, getTasksLocal } from '@/database/schema';
-
-interface PostComment {
-  id: string;
-  author: string;
-  role: 'STUDENT' | 'TEACHER';
-  date: string;
-  text: string;
-}
-
-interface ClassroomPost {
-  id: string;
-  author: string;
-  role: 'STUDENT' | 'TEACHER';
-  date: string;
-  text: string;
-  likes: number;
-  comments: PostComment[];
-}
 
 export default function ClassroomDetailScreen() {
   const router = useRouter();
@@ -543,140 +532,20 @@ export default function ClassroomDetailScreen() {
 
         {/* Conteúdo 1: Mural & Avisos com comentários estilo Classroom */}
         {activeTab === 'geral' && (
-          <View style={styles.tabSection}>
-            {/* Caixa de Novo Comunicado */}
-            <View style={styles.postBoxCard}>
-              <Text style={styles.postBoxTitle}>Compartilhar com a turma</Text>
-              <TextInput
-                style={styles.postInput}
-                placeholder="Escreva um comunicado, aviso ou instrução para os alunos..."
-                placeholderTextColor="#A0AEC0"
-                multiline
-                numberOfLines={3}
-                value={newPostText}
-                onChangeText={setNewPostText}
-              />
-              <View style={styles.postBoxActions}>
-                <TouchableOpacity
-                  style={[styles.postButton, !newPostText.trim() && { opacity: 0.5 }]}
-                  disabled={!newPostText.trim()}
-                  onPress={handlePost}
-                >
-                  <FontAwesome5 name="paper-plane" size={12} color="#FFF" />
-                  <Text style={styles.postButtonText}>Publicar no Mural</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* Lista de Publicações do Mural */}
-            {posts.map((post) => {
-              const isCommentsOpen = !!expandedPostComments[post.id];
-
-              return (
-                <View key={post.id} style={styles.feedCard}>
-                  <View style={styles.feedHeader}>
-                    <View
-                      style={[
-                        styles.feedAvatar,
-                        { backgroundColor: post.role === 'TEACHER' ? '#1CB0F6' : '#58CC02' },
-                      ]}
-                    >
-                      <FontAwesome5
-                        name={post.role === 'TEACHER' ? 'chalkboard-teacher' : 'user'}
-                        size={12}
-                        color="#FFF"
-                      />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.feedAuthor}>
-                        {post.author}{' '}
-                        {post.role === 'TEACHER' && (
-                          <Text style={styles.teacherBadgeText}>• Professor</Text>
-                        )}
-                      </Text>
-                      <Text style={styles.feedDate}>{post.date}</Text>
-                    </View>
-
-                    <TouchableOpacity
-                      style={styles.feedOptionsBtn}
-                      onPress={() => requestDeletePost(post.id)}
-                    >
-                      <FontAwesome5 name="trash-alt" size={12} color="#8CA0B3" />
-                    </TouchableOpacity>
-                  </View>
-
-                  <Text style={styles.feedText}>{post.text}</Text>
-
-                  {/* Barra de Ações: Comentários da Turma */}
-                  <View style={styles.feedActionRow}>
-                    <TouchableOpacity
-                      style={styles.toggleCommentsBtn}
-                      onPress={() => toggleComments(post.id)}
-                    >
-                      <FontAwesome5 name="comment-alt" size={12} color="#1CB0F6" />
-                      <Text style={styles.toggleCommentsText}>
-                        {post.comments.length}{' '}
-                        {post.comments.length === 1 ? 'comentário da turma' : 'comentários da turma'}
-                      </Text>
-                      <FontAwesome5
-                        name={isCommentsOpen ? 'chevron-up' : 'chevron-down'}
-                        size={10}
-                        color="#8CA0B3"
-                      />
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* Seção de Comentários do Post (Estilo Google Classroom) */}
-                  {isCommentsOpen && (
-                    <View style={styles.postCommentsSection}>
-                      {post.comments.map((comm) => (
-                        <View key={comm.id} style={styles.postCommentItem}>
-                          <View style={styles.commentAvatarMini}>
-                            <FontAwesome5
-                              name={comm.role === 'TEACHER' ? 'chalkboard-teacher' : 'user'}
-                              size={10}
-                              color="#FFF"
-                            />
-                          </View>
-                          <View style={styles.commentBubble}>
-                            <View style={styles.commentHeaderMini}>
-                              <Text style={styles.commentAuthorMini}>
-                                {comm.author}{' '}
-                                {comm.role === 'TEACHER' && (
-                                  <Text style={styles.teacherMiniTag}>(Prof)</Text>
-                                )}
-                              </Text>
-                              <Text style={styles.commentDateMini}>{comm.date}</Text>
-                            </View>
-                            <Text style={styles.commentTextMini}>{comm.text}</Text>
-                          </View>
-                        </View>
-                      ))}
-
-                      {/* Campo para Alunos/Professores Comentarem */}
-                      <View style={styles.addCommentInputRow}>
-                        <TextInput
-                          style={styles.addCommentInput}
-                          placeholder="Adicionar comentário para a turma..."
-                          placeholderTextColor="#A0AEC0"
-                          value={commentInputs[post.id] || ''}
-                          onChangeText={(txt) =>
-                            setCommentInputs((prev) => ({ ...prev, [post.id]: txt }))
-                          }
-                        />
-                        <TouchableOpacity
-                          style={styles.addCommentSendBtn}
-                          onPress={() => handleAddCommentToPost(post.id)}
-                        >
-                          <FontAwesome5 name="paper-plane" size={11} color="#FFF" />
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  )}
-                </View>
-              );
-            })}
-          </View>
+          <ClassroomFeedTab
+            posts={posts}
+            newPostText={newPostText}
+            onChangeNewPostText={setNewPostText}
+            onPublishPost={handlePost}
+            onDeletePost={requestDeletePost}
+            expandedPostComments={expandedPostComments}
+            onToggleComments={toggleComments}
+            commentInputs={commentInputs}
+            onChangeCommentInput={(postId, txt) =>
+              setCommentInputs((prev) => ({ ...prev, [postId]: txt }))
+            }
+            onAddComment={handleAddCommentToPost}
+          />
         )}
 
         {/* Conteúdo 2: Aulas & Materiais Multimodais da Turma */}
@@ -1315,49 +1184,15 @@ export default function ClassroomDetailScreen() {
 
         {/* Conteúdo 3: Alunos */}
         {activeTab === 'alunos' && (
-          <View style={styles.tabSection}>
-            <View style={styles.inviteBox}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.inviteTitle}>Convide mais participantes</Text>
-                <Text style={styles.inviteSub}>Código: {classroom.code}</Text>
-              </View>
-              <TouchableOpacity style={styles.inviteBtn} onPress={handleShare}>
-                <FontAwesome5 name="share-alt" size={12} color="#FFF" />
-                <Text style={styles.inviteBtnText}>Convidar</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.studentsListCard}>
-              {Array.isArray(apiClassroomData?.students) && apiClassroomData.students.length > 0 ? (
-                apiClassroomData.students.map((student: any) => (
-                  <View key={student.id} style={styles.studentRow}>
-                    <View style={styles.studentAvatar}>
-                      <Text style={styles.studentAvatarText}>
-                        {student.name?.charAt(0)?.toUpperCase() || 'A'}
-                      </Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.studentName}>{student.name}</Text>
-                      <Text style={styles.studentSub}>
-                        {student.currentStreak || 0} dias de ofensiva
-                      </Text>
-                    </View>
-                    <Text style={styles.studentXp}>{student.xp || 0} XP</Text>
-                  </View>
-                ))
-              ) : (
-                <View style={{ padding: 24, alignItems: 'center' }}>
-                  <FontAwesome5 name="user-friends" size={32} color="#CBD5E1" style={{ marginBottom: 10 }} />
-                  <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#64748B', textAlign: 'center' }}>
-                    Nenhum aluno matriculado ainda.
-                  </Text>
-                  <Text style={{ fontSize: 12, color: '#94A3B8', textAlign: 'center', marginTop: 4 }}>
-                    Compartilhe o código {classroom.code} para que os estudantes entrem nesta sala.
-                  </Text>
-                </View>
-              )}
-            </View>
-          </View>
+          <ClassroomStudentsTab
+            classroomCode={classroom.code}
+            students={
+              Array.isArray(apiClassroomData?.students)
+                ? apiClassroomData.students
+                : []
+            }
+            onShareInvite={handleShare}
+          />
         )}
 
         {/* Botões de Sair e Excluir Turma com Pop-confirm de acordo com o papel */}
@@ -1399,107 +1234,23 @@ export default function ClassroomDetailScreen() {
       />
 
       {/* Modal Leitor Formatado para Artigos e Macetes */}
-      <Modal
-        visible={Boolean(readingMaterial)}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setReadingMaterial(null)}
-      >
-        <SafeAreaView style={styles.readerModalOverlay}>
-          <View style={styles.readerCard}>
-            {/* Header do Leitor */}
-            <View style={styles.readerHeader}>
-              <View style={{ flex: 1 }}>
-                <View style={styles.readerBadgeRow}>
-                  <View
-                    style={[
-                      styles.readerTypeBadge,
-                      {
-                        backgroundColor:
-                          readingMaterial?.type === 'TIP' ? '#FEF3C7' : '#EFF6FF',
-                      },
-                    ]}
-                  >
-                    <FontAwesome5
-                      name={readingMaterial?.type === 'TIP' ? 'lightbulb' : 'newspaper'}
-                      size={11}
-                      color={readingMaterial?.type === 'TIP' ? '#D97706' : '#2563EB'}
-                    />
-                    <Text
-                      style={[
-                        styles.readerTypeBadgeText,
-                        {
-                          color:
-                            readingMaterial?.type === 'TIP' ? '#D97706' : '#2563EB',
-                        },
-                      ]}
-                    >
-                      {readingMaterial?.type === 'TIP' ? 'Macete Rápido' : 'Artigo Didático'}
-                    </Text>
-                  </View>
-                  <Text style={styles.readerSubjectText}>
-                    {readingMaterial?.subject?.name || classroom.subject}
-                  </Text>
-                </View>
-                <Text style={styles.readerTitle} numberOfLines={2}>
-                  {readingMaterial?.title}
-                </Text>
-                <Text style={styles.readerAuthorSub}>
-                  Turma: {classroom.name} • {classroom.teacherName}
-                </Text>
-              </View>
-
-              <TouchableOpacity
-                style={styles.readerCloseBtn}
-                onPress={() => setReadingMaterial(null)}
-              >
-                <FontAwesome5 name="times" size={16} color="#64748B" />
-              </TouchableOpacity>
-            </View>
-
-            {/* Conteúdo formatado em Markdown */}
-            <ScrollView
-              style={styles.readerScroll}
-              contentContainerStyle={styles.readerScrollContent}
-              showsVerticalScrollIndicator={false}
-            >
-              {readingMaterial?.content ? (
-                <Markdown style={markdownStyles as any}>
-                  {readingMaterial.content}
-                </Markdown>
-              ) : (
-                <Text style={styles.readerPlainBody}>
-                  {readingMaterial?.description || 'Nenhum texto disponível para este material.'}
-                </Text>
-              )}
-
-              {/* Botão de Praticar Questões deste Assunto */}
-              <View style={styles.readerFooterActionBox}>
-                <TouchableOpacity
-                  style={styles.practiceQuizBtn}
-                  activeOpacity={0.85}
-                  onPress={() => {
-                    const subId = readingMaterial?.subjectId || readingMaterial?.subject?.id;
-                    setReadingMaterial(null);
-                    router.push({
-                      pathname: '/quiz',
-                      params: {
-                        subjectId: subId || '',
-                        lessonId: readingMaterial?.id || '',
-                      },
-                    } as any);
-                  }}
-                >
-                  <FontAwesome5 name="pencil-alt" size={14} color="#FFF" />
-                  <Text style={styles.practiceQuizBtnText}>
-                    Praticar Questões deste Assunto
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-          </View>
-        </SafeAreaView>
-      </Modal>
+      <ClassroomReadingModal
+        material={readingMaterial}
+        classroomName={classroom.name}
+        teacherName={classroom.teacherName}
+        defaultSubject={classroom.subject}
+        onClose={() => setReadingMaterial(null)}
+        onPracticeQuiz={(subId, lessonId) => {
+          setReadingMaterial(null);
+          router.push({
+            pathname: '/quiz',
+            params: {
+              subjectId: subId,
+              lessonId,
+            },
+          } as any);
+        }}
+      />
 
       {/* Visualizador In-App de Arquivos PDF */}
       <PdfViewerModal
