@@ -1,6 +1,10 @@
 import { Request, Response } from "express";
 import { classroomService } from "../services/classroom.service";
 import { storageService } from "../services/storage.service";
+import { pdfReportService } from "../services/pdf-report.service";
+import { schoolOpsService } from "../services/school-ops.service";
+import { classroomFeedbackService } from "../services/classroom-feedback.service";
+import { classroomAnalyticsService } from "../services/classroom-analytics.service";
 import { AppError } from "../errors/AppError";
 
 export class ClassroomController {
@@ -342,6 +346,114 @@ export class ClassroomController {
         req.body
       );
       return res.status(201).json(result);
+    } catch (error) {
+      return this.handleError(error, res);
+    }
+  }
+
+  /**
+   * GET /classrooms/:id/invite-qr
+   */
+  async inviteQr(req: Request, res: Response): Promise<Response> {
+    try {
+      const origin =
+        (req.headers.origin as string | undefined) ||
+        `${req.protocol}://${req.get("host")}`;
+      const qrData = await schoolOpsService.generateClassroomInviteQr(
+        String(req.params.id),
+        origin
+      );
+      return res.json(qrData);
+    } catch (error) {
+      return this.handleError(error, res);
+    }
+  }
+
+  /**
+   * GET /classrooms/:id/report-pdf
+   */
+  async exportReportPdf(req: Request, res: Response): Promise<Response> {
+    try {
+      const classroomId = String(req.params.id);
+      const { fileName, buffer } =
+        await pdfReportService.generateClassroomReportPdf(classroomId);
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+      res.setHeader("Content-Length", String(buffer.length));
+      return res.status(200).send(buffer);
+    } catch (error) {
+      return this.handleError(error, res);
+    }
+  }
+
+  /**
+   * GET /classrooms/:id/question-feedback
+   */
+  async listQuestionFeedback(req: Request, res: Response): Promise<Response> {
+    try {
+      const data = await classroomFeedbackService.listClassroomFeedbacks({
+        classroomId: String(req.params.id),
+        requesterId: req.user!.id,
+        role: req.user!.role,
+        schoolId: req.schoolId || req.user!.schoolId,
+      });
+      return res.json(data);
+    } catch (error) {
+      return this.handleError(error, res);
+    }
+  }
+
+  /**
+   * POST /classrooms/:id/question-feedback
+   */
+  async createQuestionFeedback(req: Request, res: Response): Promise<Response> {
+    try {
+      const created = await classroomFeedbackService.createQuestionFeedback({
+        classroomId: String(req.params.id),
+        teacherId: req.user!.id,
+        role: req.user!.role,
+        questionId: String(req.body?.questionId || ""),
+        commentText: String(req.body?.commentText || ""),
+        audioUrl: req.body?.audioUrl ? String(req.body.audioUrl) : null,
+        audioFile: req.file,
+      });
+      return res.status(201).json(created);
+    } catch (error) {
+      return this.handleError(error, res);
+    }
+  }
+
+  /**
+   * GET /classrooms/:id/benchmark
+   * Comparativo de desempenho anônimo do aluno em relação à turma
+   */
+  async anonymousBenchmark(req: Request, res: Response): Promise<Response> {
+    try {
+      const data = await classroomAnalyticsService.getAnonymousBenchmark({
+        classroomId: String(req.params.id),
+        requesterId: req.user!.id,
+        role: req.user!.role,
+        schoolId: req.schoolId || req.user!.schoolId,
+      });
+      return res.json(data);
+    } catch (error) {
+      return this.handleError(error, res);
+    }
+  }
+
+  /**
+   * GET /classrooms/:id/difficulty-heatmap
+   * Mapa de calor de dificuldades por matéria e tópico da turma
+   */
+  async difficultyHeatmap(req: Request, res: Response): Promise<Response> {
+    try {
+      const data = await classroomAnalyticsService.getDifficultyHeatmap({
+        classroomId: String(req.params.id),
+        requesterId: req.user!.id,
+        role: req.user!.role,
+        schoolId: req.schoolId || req.user!.schoolId,
+      });
+      return res.json(data);
     } catch (error) {
       return this.handleError(error, res);
     }

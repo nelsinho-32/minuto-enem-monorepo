@@ -14,6 +14,7 @@ import { FontAwesome5 } from '@expo/vector-icons';
 import { api } from '@/services/api';
 import { useTheme } from '@/hooks/use-theme';
 import { useUserStore } from '@/store/useUserStore';
+import { StudyTimeReportCard } from '@/components/study/StudyTimeReportCard';
 
 interface StudyPlanItem {
   id: string;
@@ -78,6 +79,14 @@ export default function StudyPlanScreen() {
           setPomodoroRunning(false);
           if (pomodoroMode !== 'BREAK_5') {
             setCompletedCycles((c) => c + 1);
+            const mins = pomodoroMode === 'FOCUS_25' ? 25 : 15;
+            api
+              .post('/study-plan/focus-session', {
+                mode: pomodoroMode,
+                durationMinutes: mins,
+                subject: targetCourse,
+              })
+              .catch(() => {});
           }
           Alert.alert(
             pomodoroMode === 'BREAK_5' ? 'Pausa concluída!' : 'Ciclo de Foco Concluído!',
@@ -340,6 +349,9 @@ export default function StudyPlanScreen() {
               </TouchableOpacity>
             </View>
           </View>
+
+          {/* METAS PERSONALIZADAS DE TEMPO & RELATÓRIO DE RENDIMENTO POR HORA */}
+          <StudyTimeReportCard refreshTrigger={completedCycles} />
 
           {/* CARD DE PROGRESSO SEMANAL */}
           <View

@@ -195,6 +195,47 @@ export class TaskController {
     }
   }
 
+  /**
+   * POST /tasks/:taskId/remind-pending
+   */
+  async remindPending(req: Request, res: Response): Promise<Response> {
+    try {
+      const user = req.user;
+      if (!user) throw new AppError("Usuário não autenticado.", 401);
+      const result = await taskService.remindPendingStudents({
+        taskId: String(req.params.taskId),
+        requesterId: user.id,
+        role: user.role,
+        schoolId: req.schoolId || user.schoolId,
+      });
+      return res.status(200).json(result);
+    } catch (error) {
+      return this.handleError(error, res);
+    }
+  }
+
+  /**
+   * POST /tasks/:taskId/clone
+   */
+  async clone(req: Request, res: Response): Promise<Response> {
+    try {
+      const user = req.user;
+      if (!user) throw new AppError("Usuário não autenticado.", 401);
+      const cloned = await taskService.cloneTaskToClassroom({
+        taskId: String(req.params.taskId),
+        targetClassroomId: String(req.body?.targetClassroomId || req.body?.classroomId || ""),
+        dueDate: req.body?.dueDate,
+        title: req.body?.title,
+        requesterId: user.id,
+        role: user.role,
+        schoolId: req.schoolId || user.schoolId,
+      });
+      return res.status(201).json(cloned);
+    } catch (error) {
+      return this.handleError(error, res);
+    }
+  }
+
   private handleError(error: unknown, res: Response): Response {
     if (error instanceof AppError) {
       return res.status(error.statusCode).json({ error: error.message });

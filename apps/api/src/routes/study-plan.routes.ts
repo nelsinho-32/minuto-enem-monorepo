@@ -1,54 +1,20 @@
 import { Router } from "express";
 import { auth } from "../middlewares/auth.middleware";
-import { studyPlanService } from "../services/study-plan.service";
+import { studyPlanController } from "../controllers/study-plan.controller";
 
 const studyPlanRoutes = Router();
 
 studyPlanRoutes.use(auth);
 
-studyPlanRoutes.get("/", async (req, res) => {
-  try {
-    const data = await studyPlanService.getCurrentWeekPlan(req.user!.id);
-    return res.json(data);
-  } catch (err: any) {
-    const status = typeof err?.statusCode === "number" ? err.statusCode : 500;
-    return res
-      .status(status)
-      .json({ error: err?.message || "Erro ao carregar cronograma de estudos." });
-  }
-});
+studyPlanRoutes.get("/", (req, res) => studyPlanController.getCurrentWeek(req, res));
+studyPlanRoutes.post("/generate", (req, res) => studyPlanController.generate(req, res));
+studyPlanRoutes.patch("/:id/toggle", (req, res) => studyPlanController.toggleItem(req, res));
 
-studyPlanRoutes.post("/generate", async (req, res) => {
-  try {
-    const data = await studyPlanService.generateAdaptivePlan(req.user!.id, {
-      dailyMinutes: Number(req.body?.dailyMinutes) || 60,
-      targetCourse: req.body?.targetCourse,
-      focusAreas: Array.isArray(req.body?.focusAreas)
-        ? req.body.focusAreas
-        : undefined,
-    });
-    return res.json(data);
-  } catch (err: any) {
-    const status = typeof err?.statusCode === "number" ? err.statusCode : 500;
-    return res
-      .status(status)
-      .json({ error: err?.message || "Erro ao gerar cronograma adaptativo." });
-  }
-});
-
-studyPlanRoutes.patch("/:id/toggle", async (req, res) => {
-  try {
-    const data = await studyPlanService.togglePlanItem(
-      String(req.params.id),
-      req.user!.id
-    );
-    return res.json(data);
-  } catch (err: any) {
-    const status = typeof err?.statusCode === "number" ? err.statusCode : 500;
-    return res
-      .status(status)
-      .json({ error: err?.message || "Erro ao atualizar item do plano." });
-  }
-});
+// Metas diárias/semanais personalizadas e relatório de tempo/rendimento
+studyPlanRoutes.post("/focus-session", (req, res) =>
+  studyPlanController.recordFocusSession(req, res)
+);
+studyPlanRoutes.patch("/goals", (req, res) => studyPlanController.updateGoals(req, res));
+studyPlanRoutes.get("/time-report", (req, res) => studyPlanController.getTimeReport(req, res));
 
 export { studyPlanRoutes };

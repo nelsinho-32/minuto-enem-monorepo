@@ -24,6 +24,8 @@ Thumbs.db
 
 uploads/*
 !uploads/.gitkeep
+apps/api/uploads/*
+!apps/api/uploads/.gitkeep
 
 enem-backend/
 extrator-enem/

@@ -176,6 +176,36 @@ export class EssayController {
       return this.handleError(error, res);
     }
   }
+
+  async listRubrics(req: Request, res: Response): Promise<Response> {
+    try {
+      const items = await essayService.listRubricPresets(req.user!.id);
+      return res.json(items);
+    } catch (error) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async createRubric(req: Request, res: Response): Promise<Response> {
+    try {
+      const created = await essayService.createRubricPreset(req.user!.id, req.body || {});
+      return res.status(201).json(created);
+    } catch (error) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async deleteRubric(req: Request, res: Response): Promise<Response> {
+    try {
+      const result = await essayService.deleteRubricPreset(
+        req.user!.id,
+        String(req.params.rubricId)
+      );
+      return res.json(result);
+    } catch (error) {
+      return this.handleError(error, res);
+    }
+  }
 }
 
 export const essayController = new EssayController();

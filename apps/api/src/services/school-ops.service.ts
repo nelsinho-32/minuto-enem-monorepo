@@ -698,9 +698,9 @@ export class SchoolOpsService {
   }
 
   /**
-   * Lista o histórico de auditoria da escola.
+   * Lista o histórico de auditoria da escola (com paginação padronizada).
    */
-  async listAuditLogs(schoolId?: string | null, limit = 50) {
+  async listAuditLogs(schoolId?: string | null, limit = 50, skip = 0) {
     if (!schoolId) {
       throw new AppError("Instituição escolar não identificada.", 400);
     }
@@ -708,8 +708,138 @@ export class SchoolOpsService {
     return prisma.auditLog.findMany({
       where: { schoolId },
       orderBy: { createdAt: "desc" },
+      skip: Math.max(0, skip),
       take: Math.min(100, Math.max(1, limit)),
     });
+  }
+
+  /**
+   * Lista os alunos matriculados em uma turma específica pertencente à escola.
+   */
+  async listSchoolClassroomStudents(schoolId?: string | null, classroomId?: string) {
+    if (!schoolId || !classroomId) {
+      throw new AppError("Escola e turma são obrigatórias.", 400);
+    }
+    const room = await prisma.classroom.findFirst({
+      where: { id: classroomId, schoolId },
+      select: {
+        id: true,
+        name: true,
+        students: { select: { id: true, name: true, email: true } },
+      },
+    });
+    if (!room) {
+      throw new AppError("Turma não encontrada nesta escola.", 404);
+    }
+    return room.students;
+  }
+
+  /**
+   * Calendário Acadêmico Institucional:
+   * consolida Simulados Institucionais Unificados, Comunicados Agendados/Publicados
+   * e Prazos de Listas/Redações de todas as turmas da escola em uma linha do tempo única.
+   */
+  async getAcademicCalendar(schoolId?: string | null) {
+    if (!schoolId) {
+      throw new AppError("Instituição escolar não identificada.", 400);
+    }
+
+    const [exams, announcements, classrooms] = await Promise.all([
+      prisma.institutionalExam.findMany({
+        where: { schoolId },
+        orderBy: { startsAt: "asc" },
+        take: 40,
+      }),
+      prisma.announcement.findMany({
+        where: { schoolId },
+        include: { classroom: { select: { id: true, name: true } } },
+        orderBy: { createdAt: "desc" },
+        take: 40,
+      }),
+      prisma.classroom.findMany({
+        where: { schoolId },
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          tasks: {
+            where: { dueDate: { not: null } },
+            select: {
+              id: true,
+              title: true,
+              topic: true,
+              dueDate: true,
+              total: true,
+            },
+            orderBy: { dueDate: "asc" },
+            take: 30,
+          },
+        },
+      }),
+    ]);
+
+    const events: Array<{
+      id: string;
+      type: "INSTITUTIONAL_EXAM" | "ANNOUNCEMENT" | "CLASSROOM_TASK";
+      title: string;
+      subtitle: string;
+      date: string;
+      classroomName?: string | null;
+      badge: string;
+    }> = [];
+
+    for (const ex of exams) {
+      events.push({
+        id: `exam-${ex.id}`,
+        type: "INSTITUTIONAL_EXAM",
+        title: ex.title,
+        subtitle: `Simulado Unificado • ${ex.durationMinutes} min • ${ex.questionIds.length} questões`,
+        date: ex.startsAt.toISOString(),
+        classroomName: "Toda a Escola",
+        badge: "Simulado Oficial",
+      });
+    }
+
+    for (const ann of announcements) {
+      const effectiveDate = ann.scheduledFor || ann.createdAt;
+      const isScheduled = ann.scheduledFor && ann.scheduledFor.getTime() > Date.now();
+      events.push({
+        id: `ann-${ann.id}`,
+        type: "ANNOUNCEMENT",
+        title: ann.title,
+        subtitle: ann.content.slice(0, 110),
+        date: effectiveDate.toISOString(),
+        classroomName: ann.classroom?.name || (ann.targetAudience === "TEACHERS_ONLY" ? "Corpo Docente" : "Comunidade Escolar"),
+        badge: isScheduled ? "Comunicado Agendado" : "Comunicado Mural",
+      });
+    }
+
+    for (const room of classrooms) {
+      for (const task of room.tasks) {
+        if (!task.dueDate) continue;
+        events.push({
+          id: `task-${task.id}`,
+          type: "CLASSROOM_TASK",
+          title: task.title || task.topic,
+          subtitle: `Prazo de entrega na turma ${room.name} (${room.code})`,
+          date: task.dueDate.toISOString(),
+          classroomName: room.name,
+          badge: "Entrega de Turma",
+        });
+      }
+    }
+
+    events.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    return {
+      totalEvents: events.length,
+      counts: {
+        exams: exams.length,
+        announcements: announcements.length,
+        tasks: events.filter((e) => e.type === "CLASSROOM_TASK").length,
+      },
+      events,
+    };
   }
 }
 

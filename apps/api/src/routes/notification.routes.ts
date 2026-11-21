@@ -1,6 +1,10 @@
 import { Router } from "express";
 import { auth } from "../middlewares/auth.middleware";
 import { realtimeNotificationService } from "../services/realtime-notification.service";
+import {
+  parsePaginationParams,
+  setPaginationAndCacheHeaders,
+} from "../utils/pagination";
 
 const notificationRoutes = Router();
 
@@ -9,11 +13,21 @@ notificationRoutes.use(auth);
 notificationRoutes.get("/", async (req, res) => {
   try {
     const userId = req.user!.id;
-    const limit = Number(req.query.limit) || 40;
+    const { page, limit } = parsePaginationParams(
+      req.query as Record<string, any>,
+      40,
+      100
+    );
     const data = await realtimeNotificationService.listUserNotifications(
       userId,
       limit
     );
+    setPaginationAndCacheHeaders(res, {
+      page,
+      limit,
+      total: Array.isArray(data?.items) ? data.items.length : undefined,
+      maxAgeSeconds: 5,
+    });
     return res.json(data);
   } catch (err: any) {
     return res

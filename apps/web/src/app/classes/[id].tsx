@@ -35,6 +35,8 @@ import {
 import { ClassroomStudentsTab } from '@/components/classroom/ClassroomStudentsTab';
 import { ClassroomReadingModal } from '@/components/classroom/ClassroomReadingModal';
 import { QuestionFeedbackModal } from '@/components/classroom/QuestionFeedbackModal';
+import { ClassroomBenchmarkCard } from '@/components/classroom/ClassroomBenchmarkCard';
+import { ClassroomHeatmapCard } from '@/components/classroom/ClassroomHeatmapCard';
 import { api, BASE_URL } from '@/services/api';
 import { useTheme , useThemedStyles } from '@/hooks/use-theme';
 import { saveTasksLocal, getTasksLocal } from '@/database/schema';
@@ -988,6 +990,12 @@ export default function ClassroomDetailScreen() {
               canSend={user?.role === 'TEACHER' || user?.role === 'ADMIN'}
               onClose={() => setFeedbackModalVisible(false)}
             />
+
+            {/* Comparativo Anônimo (Aluno) & Mapa de Calor de Dificuldades (Professor/Escola) */}
+            {user?.role === 'STUDENT' && <ClassroomBenchmarkCard classroomId={classroom.id} />}
+            {(user?.role === 'TEACHER' || user?.role === 'SCHOOL' || user?.role === 'ADMIN') && (
+              <ClassroomHeatmapCard classroomId={classroom.id} />
+            )}
 
             {/* Modal de QR Code de Convite */}
             <Modal

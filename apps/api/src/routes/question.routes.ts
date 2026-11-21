@@ -1,98 +1,13 @@
 import { Router } from "express";
 import { questionController } from "../controllers/question.controller";
 import { auth } from "../middlewares/auth.middleware";
-import { prisma } from "../lib/prisma";
 
 const questionRoutes = Router();
 
 // Caderno de Erros enriquecido com devolutivas em áudio/comentário do professor
-questionRoutes.get("/error-notebook", auth, async (req, res) => {
-  try {
-    const userId = req.user!.id;
-    const wrongAttempts = await prisma.questionAttempt.findMany({
-      where: { userId, isCorrect: false },
-      orderBy: { createdAt: "desc" },
-      take: 60,
-      include: {
-        question: {
-          select: {
-            id: true,
-            subject: true,
-            topic: true,
-            area: true,
-            year: true,
-            difficulty: true,
-            text: true,
-            options: true,
-            correctAnswer: true,
-            explanation: true,
-          },
-        },
-      },
-    });
-
-    const userWithRooms = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { enrolledClassrooms: { select: { id: true } } },
-    });
-    const roomIds = (userWithRooms?.enrolledClassrooms || []).map((r) => r.id);
-
-    const uniqueMap = new Map<string, any>();
-    for (const att of wrongAttempts) {
-      if (!att.question) continue;
-      if (!uniqueMap.has(att.questionId)) {
-        uniqueMap.set(att.questionId, {
-          questionId: att.questionId,
-          lastAttemptId: att.id,
-          selectedAnswer: att.selectedAnswer,
-          lastErrorAt: att.createdAt,
-          errorCount: 1,
-          question: att.question,
-          teacherFeedbacks: [],
-        });
-      } else {
-        uniqueMap.get(att.questionId).errorCount += 1;
-      }
-    }
-
-    const questionIds = Array.from(uniqueMap.keys());
-    if (roomIds.length > 0 && questionIds.length > 0) {
-      const feedbacks = await prisma.questionFeedback.findMany({
-        where: {
-          classroomId: { in: roomIds },
-          questionId: { in: questionIds },
-        },
-        include: {
-          teacher: { select: { id: true, name: true } },
-          classroom: { select: { id: true, name: true } },
-        },
-        orderBy: { createdAt: "desc" },
-      });
-
-      for (const fb of feedbacks) {
-        const entry = uniqueMap.get(fb.questionId);
-        if (entry) {
-          entry.teacherFeedbacks.push({
-            id: fb.id,
-            commentText: fb.commentText,
-            audioUrl: fb.audioUrl,
-            createdAt: fb.createdAt,
-            teacherName: fb.teacher.name,
-            classroomId: fb.classroom.id,
-            classroomName: fb.classroom.name,
-          });
-        }
-      }
-    }
-
-    return res.json({
-      total: uniqueMap.size,
-      items: Array.from(uniqueMap.values()),
-    });
-  } catch (err: any) {
-    return res.status(500).json({ error: err?.message || "Erro ao carregar caderno de erros." });
-  }
-});
+questionRoutes.get("/error-notebook", auth, (req, res) =>
+  questionController.errorNotebook(req, res)
+);
 
 // GET /questions/stats (estatísticas do usuário logado)
 questionRoutes.get("/stats", (req, res) =>
@@ -139,8 +54,11 @@ questionRoutes.get("/by-topic/:topicId", (req, res) =>
 // GET /questions/:id (busca por ID)
 questionRoutes.get("/:id", (req, res) => questionController.getById(req, res));
 
-// POST /questions/answer (resolução de questão)
-questionRoutes.post("/answer", (req, res) =>
+// POST /questions/answer ou /questions/attempt (registra resposta do aluno com XP e ofensiva)
+questionRoutes.post("/answer", auth, (req, res) =>
+  questionController.answer(req, res)
+);
+questionRoutes.post("/attempt", auth, (req, res) =>
   questionController.answer(req, res)
 );
 

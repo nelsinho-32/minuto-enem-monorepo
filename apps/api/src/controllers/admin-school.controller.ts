@@ -70,6 +70,65 @@ export class AdminSchoolController {
       return this.handleError(error, res);
     }
   }
+
+  async questionsHealth(_req: Request, res: Response): Promise<Response> {
+    try {
+      const data = await adminSchoolService.getQuestionsHealth();
+      return res.json(data);
+    } catch (error) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async recalibrateQuestions(_req: Request, res: Response): Promise<Response> {
+    try {
+      const data = await adminSchoolService.recalibrateQuestionsDifficulty();
+      return res.json(data);
+    } catch (error) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async listSisuOverrides(_req: Request, res: Response): Promise<Response> {
+    try {
+      const items = await adminSchoolService.listSisuOverrides();
+      return res.json(items);
+    } catch (error) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async upsertSisuOverride(req: Request, res: Response): Promise<Response> {
+    try {
+      const saved = await adminSchoolService.upsertSisuOverride(
+        req.user!.id,
+        req.body || {}
+      );
+      return res.json(saved);
+    } catch (error) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async tenantsOverview(_req: Request, res: Response): Promise<Response> {
+    try {
+      const data = await adminSchoolService.getTenantsOverview();
+      return res.json(data);
+    } catch (error) {
+      return this.handleError(error, res);
+    }
+  }
+
+  async querySisuCatalog(req: Request, res: Response): Promise<Response> {
+    try {
+      const data = await adminSchoolService.querySisuCatalog(
+        req.query as Record<string, any>
+      );
+      return res.json(data);
+    } catch (error) {
+      return this.handleError(error, res);
+    }
+  }
 }
 
 export const adminSchoolController = new AdminSchoolController();

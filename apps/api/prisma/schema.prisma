@@ -62,6 +62,8 @@ model User {
   targetModality     String?           @default("AC")
   targetScore        Int?
   triHistory         Json?             @default("[]")
+  dailyStudyGoalMinutes  Int           @default(60)
+  weeklyStudyGoalMinutes Int           @default(360)
   xp                 Int               @default(0)
   currentStreak      Int               @default(0)
   longestStreak      Int               @default(0)
@@ -93,6 +95,7 @@ model User {
   institutionalExamAttempts InstitutionalExamAttempt[] @relation("StudentExamAttempts")
   questionFeedbacks         QuestionFeedback[]         @relation("TeacherQuestionFeedbacks")
   essayRubricPresets        EssayRubricPreset[]        @relation("TeacherEssayRubrics")
+  focusSessions             FocusSession[]
   createdAt                 DateTime                   @default(now())
   updatedAt          DateTime          @default(now()) @updatedAt
 
@@ -791,4 +794,17 @@ model SisuCutoffOverride {
   @@unique([institution, courseSlug, modality])
   @@index([institution])
   @@index([courseSlug])
+}
+
+model FocusSession {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject         String?
+  mode            String   @default("FOCUS_25")
+  durationMinutes Int      @default(25)
+  createdAt       DateTime @default(now())
+
+  @@index([userId])
+  @@index([userId, createdAt])
 }

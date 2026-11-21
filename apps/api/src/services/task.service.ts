@@ -1690,6 +1690,105 @@ export class TaskService {
       pendingNames: pendingStudents.map((s) => s.name),
     };
   }
+
+  /**
+   * Clona uma tarefa/lista existente para outra turma (ajustando título e prazo opcionalmente).
+   */
+  async cloneTaskToClassroom(params: {
+    taskId: string;
+    targetClassroomId: string;
+    dueDate?: string | Date | null;
+    title?: string;
+    requesterId: string;
+    role: Role;
+    schoolId?: string | null;
+  }) {
+    if (!params.targetClassroomId) {
+      throw new AppError("Selecione a turma de destino para clonar a atividade.", 400);
+    }
+
+    const [sourceTask, targetRoom] = await Promise.all([
+      prisma.task.findUnique({ where: { id: params.taskId } }),
+      prisma.classroom.findUnique({
+        where: { id: params.targetClassroomId },
+        select: {
+          id: true,
+          name: true,
+          teacherId: true,
+          schoolId: true,
+          students: { select: { id: true } },
+        },
+      }),
+    ]);
+
+    if (!sourceTask) {
+      throw new AppError("Tarefa de origem não encontrada.", 404);
+    }
+    if (!targetRoom) {
+      throw new AppError("Turma de destino não encontrada.", 404);
+    }
+
+    const canClone =
+      params.role === Role.ADMIN ||
+      targetRoom.teacherId === params.requesterId ||
+      (params.role === Role.SCHOOL && targetRoom.schoolId === params.schoolId);
+
+    if (!canClone) {
+      throw new AppError("Você não tem permissão para atribuir tarefas nesta turma de destino.", 403);
+    }
+
+    let parsedDueDate: Date | null = sourceTask.dueDate;
+    if (params.dueDate !== undefined) {
+      if (params.dueDate === null || params.dueDate === "") {
+        parsedDueDate = null;
+      } else {
+        const candidate = new Date(params.dueDate);
+        if (Number.isNaN(candidate.getTime())) {
+          throw new AppError("Data de entrega (dueDate) inválida.", 400);
+        }
+        parsedDueDate = candidate;
+      }
+    }
+
+    const cloned = await prisma.task.create({
+      data: {
+        title: params.title?.trim() || `${sourceTask.title || sourceTask.topic} (Cópia)`,
+        description: sourceTask.description,
+        topic: sourceTask.topic,
+        subjectId: sourceTask.subjectId,
+        topicId: sourceTask.topicId,
+        creationMode: sourceTask.creationMode,
+        difficulty: sourceTask.difficulty,
+        total: sourceTask.total,
+        questionIds: sourceTask.questionIds,
+        customQuestions: sourceTask.customQuestions as any,
+        dueDate: parsedDueDate,
+        status: "APPROVED",
+        classId: targetRoom.id,
+        classroomId: targetRoom.id,
+      },
+      include: {
+        classroom: { select: { id: true, name: true, code: true } },
+        subject: { select: { id: true, name: true, slug: true } },
+      },
+    });
+
+    try {
+      const studentIds = targetRoom.students.map((s) => s.id);
+      if (studentIds.length > 0) {
+        await realtimeNotificationService.notifyUsers(studentIds, {
+          type: "NEW_TASK",
+          title: `Nova atividade em ${targetRoom.name}`,
+          body: cloned.title,
+          route: `/classes/${targetRoom.id}`,
+        });
+      }
+    } catch {
+      // Não-bloqueante
+    }
+
+    return cloned;
+  }
 }
 
 export const taskService = new TaskService();

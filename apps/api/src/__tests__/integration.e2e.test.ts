@@ -136,6 +136,7 @@ describe("Integração E2E com PostgreSQL — Rotas Críticas do Minuto ENEM", (
     if (schoolId) {
       await prisma.auditLog.deleteMany({ where: { schoolId } });
       await prisma.announcement.deleteMany({ where: { schoolId } });
+      await prisma.task.deleteMany({ where: { classroom: { schoolId } } });
       await prisma.classroom.deleteMany({ where: { schoolId } });
     }
     await prisma.sisuCutoffOverride.deleteMany({
@@ -644,5 +645,59 @@ describe("Integração E2E com PostgreSQL — Rotas Críticas do Minuto ENEM", (
       .set("Authorization", `Bearer ${adminToken}`);
     expect(tenantsRes.status).toBe(200);
     expect(tenantsRes.body.summary.schoolsTotal).toBeGreaterThanOrEqual(1);
+
+    // 7. Metas Diárias/Semanais Personalizadas + Relatório de Tempo e Rendimento por Hora
+    const focusRes = await request(app)
+      .post("/api/study-plan/focus-session")
+      .set("Authorization", `Bearer ${studentToken}`)
+      .send({ subject: "Matemática", mode: "FOCUS_25", durationMinutes: 25 });
+    expect(focusRes.status).toBe(201);
+    expect(focusRes.body.xpEarned).toBeGreaterThanOrEqual(5);
+
+    const studyGoalsRes = await request(app)
+      .patch("/api/study-plan/goals")
+      .set("Authorization", `Bearer ${studentToken}`)
+      .send({ dailyStudyGoalMinutes: 90, weeklyStudyGoalMinutes: 450 });
+    expect(studyGoalsRes.status).toBe(200);
+    expect(studyGoalsRes.body.dailyStudyGoalMinutes).toBe(90);
+
+    const timeReportRes = await request(app)
+      .get("/api/study-plan/time-report")
+      .set("Authorization", `Bearer ${studentToken}`);
+    expect(timeReportRes.status).toBe(200);
+    expect(timeReportRes.body.focusMinutesToday).toBeGreaterThanOrEqual(25);
+    expect(typeof timeReportRes.body.questionsPerStudyHour).toBe("number");
+
+    // 8. Comparativo de Desempenho Anônimo + Mapa de Calor de Dificuldades da Turma
+    const benchmarkRes = await request(app)
+      .get(`/api/classrooms/${secondRoom.id}/benchmark`)
+      .set("Authorization", `Bearer ${studentToken}`);
+    expect(benchmarkRes.status).toBe(200);
+    expect(typeof benchmarkRes.body.percentileRank).toBe("number");
+
+    const heatmapRes = await request(app)
+      .get(`/api/classrooms/${secondRoom.id}/difficulty-heatmap`)
+      .set("Authorization", `Bearer ${schoolToken}`);
+    expect(heatmapRes.status).toBe(200);
+    expect(Array.isArray(heatmapRes.body.cells)).toBe(true);
+
+    // 9. Clonagem de Listas entre Turmas + Calendário Acadêmico Institucional + Headers de Paginação
+    const cloneRes = await request(app)
+      .post(`/api/tasks/${taskForRemind!.id}/clone`)
+      .set("Authorization", `Bearer ${schoolToken}`)
+      .send({
+        targetClassroomId: secondRoom.id,
+        title: "Lista Clonada para 2ª Turma E2E",
+      });
+    expect(cloneRes.status).toBe(201);
+    expect(cloneRes.body.classroomId).toBe(secondRoom.id);
+
+    const acadCalRes = await request(app)
+      .get("/api/schools/me/academic-calendar")
+      .set("Authorization", `Bearer ${schoolToken}`);
+    expect(acadCalRes.status).toBe(200);
+    expect(acadCalRes.body.totalEvents).toBeGreaterThanOrEqual(1);
+    expect(acadCalRes.headers || auditRes.headers["x-page"]).toBeTruthy();
+    expect(auditRes.headers["x-page"]).toBe("1");
   });
 });

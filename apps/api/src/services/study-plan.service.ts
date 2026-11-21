@@ -266,6 +266,155 @@ export class StudyPlanService {
 
     return { item: updated, xpAwarded };
   }
+
+  /**
+   * Registra uma sessão de foco concluída (Pomodoro) e credita XP proporcional.
+   */
+  async recordFocusSession(
+    userId: string,
+    input: { subject?: string; mode?: string; durationMinutes?: number }
+  ) {
+    const durationMinutes = Math.min(
+      180,
+      Math.max(1, Math.round(Number(input.durationMinutes) || 25))
+    );
+    const mode = String(input.mode || "FOCUS_25").trim();
+    const subject = input.subject?.trim() || "Geral";
+
+    const session = await prisma.focusSession.create({
+      data: {
+        userId,
+        subject,
+        mode,
+        durationMinutes,
+      },
+    });
+
+    const xpEarned = Math.max(5, Math.round(durationMinutes * 0.8));
+    await prisma.user.update({
+      where: { id: userId },
+      data: { xp: { increment: xpEarned } },
+    });
+    await streakService.registerActivity(userId, "FOCUS_POMODORO").catch(() => {});
+
+    return { session, xpEarned };
+  }
+
+  /**
+   * Atualiza as metas diárias e semanais personalizadas de estudo do aluno.
+   */
+  async updateStudyGoals(
+    userId: string,
+    input: { dailyStudyGoalMinutes?: number; weeklyStudyGoalMinutes?: number }
+  ) {
+    const daily =
+      input.dailyStudyGoalMinutes !== undefined
+        ? Math.min(480, Math.max(15, Math.round(Number(input.dailyStudyGoalMinutes))))
+        : undefined;
+    const weekly =
+      input.weeklyStudyGoalMinutes !== undefined
+        ? Math.min(3360, Math.max(60, Math.round(Number(input.weeklyStudyGoalMinutes))))
+        : undefined;
+
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(daily !== undefined ? { dailyStudyGoalMinutes: daily } : {}),
+        ...(weekly !== undefined ? { weeklyStudyGoalMinutes: weekly } : {}),
+      },
+      select: {
+        id: true,
+        dailyStudyGoalMinutes: true,
+        weeklyStudyGoalMinutes: true,
+      },
+    });
+
+    return updated;
+  }
+
+  /**
+   * Relatório de Tempo & Rendimento por Hora Estudada:
+   * cruza sessões de foco + tempo em questões com a taxa de acertos na semana.
+   */
+  async getStudyTimeReport(userId: string) {
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfWeek = new Date(now.getTime() - 7 * 86_400_000);
+
+    const [user, sessionsWeek, attemptsWeek] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          dailyStudyGoalMinutes: true,
+          weeklyStudyGoalMinutes: true,
+        },
+      }),
+      prisma.focusSession.findMany({
+        where: { userId, createdAt: { gte: startOfWeek } },
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.questionAttempt.findMany({
+        where: { userId, createdAt: { gte: startOfWeek } },
+        select: { isCorrect: true, timeSpentMs: true, createdAt: true },
+      }),
+    ]);
+
+    const dailyGoalMinutes = user?.dailyStudyGoalMinutes || 60;
+    const weeklyGoalMinutes = user?.weeklyStudyGoalMinutes || 360;
+
+    const focusMinutesToday = sessionsWeek
+      .filter((s) => s.createdAt >= startOfToday)
+      .reduce((acc, s) => acc + s.durationMinutes, 0);
+    const focusMinutesWeek = sessionsWeek.reduce((acc, s) => acc + s.durationMinutes, 0);
+
+    const questionTimeMinutesToday = Math.round(
+      attemptsWeek
+        .filter((a) => a.createdAt >= startOfToday)
+        .reduce((acc, a) => acc + (a.timeSpentMs || 45_000), 0) / 60_000
+    );
+    const questionTimeMinutesWeek = Math.round(
+      attemptsWeek.reduce((acc, a) => acc + (a.timeSpentMs || 45_000), 0) / 60_000
+    );
+
+    const totalMinutesToday = focusMinutesToday + questionTimeMinutesToday;
+    const totalMinutesWeek = focusMinutesWeek + questionTimeMinutesWeek;
+
+    const totalQuestionsWeek = attemptsWeek.length;
+    const correctQuestionsWeek = attemptsWeek.filter((a) => a.isCorrect).length;
+    const accuracyPercentWeek =
+      totalQuestionsWeek > 0
+        ? Math.round((correctQuestionsWeek / totalQuestionsWeek) * 100)
+        : 0;
+
+    const hoursStudiedWeek = Math.max(0.25, totalMinutesWeek / 60);
+    const questionsPerStudyHour =
+      totalMinutesWeek > 0 ? Math.round(totalQuestionsWeek / hoursStudiedWeek) : 0;
+    const correctPerStudyHour =
+      totalMinutesWeek > 0 ? Math.round(correctQuestionsWeek / hoursStudiedWeek) : 0;
+
+    return {
+      dailyGoalMinutes,
+      weeklyGoalMinutes,
+      focusMinutesToday,
+      focusMinutesWeek,
+      totalMinutesToday,
+      totalMinutesWeek,
+      dailyProgressPercent: Math.min(
+        100,
+        Math.round((totalMinutesToday / Math.max(1, dailyGoalMinutes)) * 100)
+      ),
+      weeklyProgressPercent: Math.min(
+        100,
+        Math.round((totalMinutesWeek / Math.max(1, weeklyGoalMinutes)) * 100)
+      ),
+      sessionsCountWeek: sessionsWeek.length,
+      totalQuestionsWeek,
+      correctQuestionsWeek,
+      accuracyPercentWeek,
+      questionsPerStudyHour,
+      correctPerStudyHour,
+    };
+  }
 }
 
 export const studyPlanService = new StudyPlanService();

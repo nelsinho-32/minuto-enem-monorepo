@@ -17,6 +17,7 @@ import { FontAwesome5 } from '@expo/vector-icons';
 import { api } from '@/services/api';
 import { useTheme } from '@/hooks/use-theme';
 import { useUserStore } from '@/store/useUserStore';
+import { CloneTaskModal } from '@/components/classroom/CloneTaskModal';
 
 interface CalendarTaskItem {
   id: string;
@@ -83,6 +84,7 @@ export default function UnifiedCalendarScreen() {
   const [selectedClassroomId, setSelectedClassroomId] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'OVERDUE' | 'TODAY' | 'UPCOMING' | 'COMPLETED'>('ALL');
   const [remindingTaskId, setRemindingTaskId] = useState<string | null>(null);
+  const [cloneTargetTask, setCloneTargetTask] = useState<{ id: string; title: string } | null>(null);
 
   const handleRemindPending = async (taskId: string) => {
     setRemindingTaskId(taskId);
@@ -335,29 +337,53 @@ export default function UnifiedCalendarScreen() {
                           : 'Toque para abrir na turma'}
                     </Text>
 
-                    {(role === 'TEACHER' || role === 'SCHOOL' || role === 'ADMIN') &&
-                    item.submissionCount < item.totalStudents ? (
-                      <TouchableOpacity
-                        disabled={remindingTaskId === item.id}
-                        onPress={(e) => {
-                          e.stopPropagation?.();
-                          handleRemindPending(item.id);
-                        }}
-                        style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          gap: 5,
-                          backgroundColor: '#FEF3C7',
-                          paddingHorizontal: 10,
-                          paddingVertical: 5,
-                          borderRadius: 8,
-                        }}
-                      >
-                        <FontAwesome5 name="bell" size={10} color="#B45309" />
-                        <Text style={{ fontSize: 11, fontWeight: '800', color: '#B45309' }}>
-                          {remindingTaskId === item.id ? 'Enviando...' : 'Notificar Pendentes'}
-                        </Text>
-                      </TouchableOpacity>
+                    {(role === 'TEACHER' || role === 'SCHOOL' || role === 'ADMIN') ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <TouchableOpacity
+                          onPress={(e) => {
+                            e.stopPropagation?.();
+                            setCloneTargetTask({ id: item.id, title: item.title });
+                          }}
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 4,
+                            backgroundColor: '#EDE9FE',
+                            paddingHorizontal: 9,
+                            paddingVertical: 5,
+                            borderRadius: 8,
+                          }}
+                        >
+                          <FontAwesome5 name="copy" size={10} color="#6D28D9" />
+                          <Text style={{ fontSize: 11, fontWeight: '800', color: '#6D28D9' }}>
+                            Clonar
+                          </Text>
+                        </TouchableOpacity>
+
+                        {item.submissionCount < item.totalStudents && (
+                          <TouchableOpacity
+                            disabled={remindingTaskId === item.id}
+                            onPress={(e) => {
+                              e.stopPropagation?.();
+                              handleRemindPending(item.id);
+                            }}
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 5,
+                              backgroundColor: '#FEF3C7',
+                              paddingHorizontal: 10,
+                              paddingVertical: 5,
+                              borderRadius: 8,
+                            }}
+                          >
+                            <FontAwesome5 name="bell" size={10} color="#B45309" />
+                            <Text style={{ fontSize: 11, fontWeight: '800', color: '#B45309' }}>
+                              {remindingTaskId === item.id ? 'Enviando...' : 'Notificar Pendentes'}
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
                     ) : (
                       <FontAwesome5 name="chevron-right" size={12} color={theme.textMuted} />
                     )}
@@ -368,6 +394,16 @@ export default function UnifiedCalendarScreen() {
           </View>
         )}
       </ScrollView>
+
+      <CloneTaskModal
+        visible={Boolean(cloneTargetTask)}
+        task={cloneTargetTask}
+        classrooms={data?.classrooms || []}
+        onClose={() => setCloneTargetTask(null)}
+        onCloned={() => {
+          refetch();
+        }}
+      />
     </SafeAreaView>
   );
 }

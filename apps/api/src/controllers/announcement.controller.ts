@@ -1,6 +1,10 @@
 import { Request, Response } from "express";
 import { announcementService } from "../services/announcement.service";
 import { AppError } from "../errors/AppError";
+import {
+  parsePaginationParams,
+  setPaginationAndCacheHeaders,
+} from "../utils/pagination";
 
 export class AnnouncementController {
   private handleError(error: unknown, res: Response): Response {
@@ -42,8 +46,20 @@ export class AnnouncementController {
   async list(req: Request, res: Response): Promise<Response> {
     try {
       const user = req.user;
+      const { page, limit, skip, take } = parsePaginationParams(
+        req.query as Record<string, any>,
+        30,
+        100
+      );
       const announcements = await announcementService.listAnnouncementsForUser(user);
-      return res.status(200).json(announcements);
+      const paged = announcements.slice(skip, skip + take);
+      setPaginationAndCacheHeaders(res, {
+        page,
+        limit,
+        total: announcements.length,
+        maxAgeSeconds: 15,
+      });
+      return res.status(200).json(paged);
     } catch (error) {
       return this.handleError(error, res);
     }
@@ -60,8 +76,20 @@ export class AnnouncementController {
         throw new AppError("Nenhuma escola vinculada a este usuário.", 403);
       }
 
+      const { page, limit, skip, take } = parsePaginationParams(
+        req.query as Record<string, any>,
+        50,
+        100
+      );
       const announcements = await announcementService.listSchoolAnnouncements(schoolId);
-      return res.status(200).json(announcements);
+      const paged = announcements.slice(skip, skip + take);
+      setPaginationAndCacheHeaders(res, {
+        page,
+        limit,
+        total: announcements.length,
+        maxAgeSeconds: 10,
+      });
+      return res.status(200).json(paged);
     } catch (error) {
       return this.handleError(error, res);
     }

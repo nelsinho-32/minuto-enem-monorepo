@@ -107,23 +107,9 @@ classroomRoutes.post("/tasks/:taskId/submit", (req, res) =>
 );
 
 // Convite por Link + QR Code para matrícula rápida na turma
-classroomRoutes.get("/:id/invite-qr", auth, async (req, res) => {
-  try {
-    const origin =
-      (req.headers.origin as string | undefined) ||
-      `${req.protocol}://${req.get("host")}`;
-    const qrData = await schoolOpsService.generateClassroomInviteQr(
-      String(req.params.id),
-      origin
-    );
-    return res.json(qrData);
-  } catch (err: any) {
-    const status = typeof err?.statusCode === "number" ? err.statusCode : 500;
-    return res
-      .status(status)
-      .json({ error: err?.message || "Erro ao gerar convite QR da turma." });
-  }
-});
+classroomRoutes.get("/:id/invite-qr", auth, (req, res) =>
+  classroomController.inviteQr(req, res)
+);
 
 // Exportação do Relatório Pedagógico da Turma exclusivamente em PDF
 classroomRoutes.get(
@@ -131,44 +117,13 @@ classroomRoutes.get(
   auth,
   requireRole([Role.TEACHER, Role.SCHOOL, Role.ADMIN]),
   requireClassroomTeacherScope,
-  async (req, res) => {
-    try {
-      const classroomId = String(req.params.id);
-      const { fileName, buffer } =
-        await pdfReportService.generateClassroomReportPdf(classroomId);
-      res.setHeader("Content-Type", "application/pdf");
-      res.setHeader(
-        "Content-Disposition",
-        `attachment; filename="${fileName}"`
-      );
-      res.setHeader("Content-Length", String(buffer.length));
-      return res.status(200).send(buffer);
-    } catch (err: any) {
-      const status = typeof err?.statusCode === "number" ? err.statusCode : 500;
-      return res
-        .status(status)
-        .json({ error: err?.message || "Erro ao gerar relatório PDF da turma." });
-    }
-  }
+  (req, res) => classroomController.exportReportPdf(req, res)
 );
 
 // Devolutiva em Áudio ou Comentário por Questão Errada da Turma
-classroomRoutes.get("/:id/question-feedback", auth, async (req, res) => {
-  try {
-    const data = await classroomFeedbackService.listClassroomFeedbacks({
-      classroomId: String(req.params.id),
-      requesterId: req.user!.id,
-      role: req.user!.role,
-      schoolId: req.schoolId || req.user!.schoolId,
-    });
-    return res.json(data);
-  } catch (err: any) {
-    const status = typeof err?.statusCode === "number" ? err.statusCode : 500;
-    return res
-      .status(status)
-      .json({ error: err?.message || "Erro ao carregar devolutivas da turma." });
-  }
-});
+classroomRoutes.get("/:id/question-feedback", auth, (req, res) =>
+  classroomController.listQuestionFeedback(req, res)
+);
 
 classroomRoutes.post(
   "/:id/question-feedback",
@@ -176,25 +131,17 @@ classroomRoutes.post(
   requireRole([Role.TEACHER, Role.SCHOOL, Role.ADMIN]),
   uploadRateLimiter,
   uploadOptionalAudioMiddleware,
-  async (req, res) => {
-    try {
-      const created = await classroomFeedbackService.createQuestionFeedback({
-        classroomId: String(req.params.id),
-        teacherId: req.user!.id,
-        role: req.user!.role,
-        questionId: String(req.body?.questionId || ""),
-        commentText: String(req.body?.commentText || ""),
-        audioUrl: req.body?.audioUrl ? String(req.body.audioUrl) : null,
-        audioFile: req.file,
-      });
-      return res.status(201).json(created);
-    } catch (err: any) {
-      const status = typeof err?.statusCode === "number" ? err.statusCode : 500;
-      return res
-        .status(status)
-        .json({ error: err?.message || "Erro ao enviar devolutiva." });
-    }
-  }
+  (req, res) => classroomController.createQuestionFeedback(req, res)
+);
+
+// Comparativo de Desempenho Anônimo na Turma (Aluno / Professor)
+classroomRoutes.get("/:id/benchmark", auth, (req, res) =>
+  classroomController.anonymousBenchmark(req, res)
+);
+
+// Mapa de Calor de Dificuldades por Assunto da Turma (Professor / Escola)
+classroomRoutes.get("/:id/difficulty-heatmap", auth, (req, res) =>
+  classroomController.difficultyHeatmap(req, res)
 );
 
 // Detalhes da sala por ID ou Código

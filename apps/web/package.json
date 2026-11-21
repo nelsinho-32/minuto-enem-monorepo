@@ -11,6 +11,7 @@
     "start": "expo start",
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
+    "test": "npx --prefix ../api vitest run ../web/src/__tests__/frontend.test.ts",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo start --android",
     "ios": "expo start --ios",

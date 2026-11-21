@@ -4,6 +4,10 @@ import { prisma } from "../lib/prisma";
 import { questionService } from "../services/question.service";
 import { AppError } from "../errors/AppError";
 import { JwtPayloadData } from "../middlewares/auth.middleware";
+import {
+  parsePaginationParams,
+  setPaginationAndCacheHeaders,
+} from "../utils/pagination";
 
 const JWT_SECRET = process.env.JWT_SECRET || "enem-super-secret-jwt-key-2026";
 
@@ -473,6 +477,116 @@ export class QuestionController {
       });
 
       return res.status(200).json(questions);
+    } catch (error) {
+      return this.handleError(error, res);
+    }
+  }
+
+  /**
+   * GET /questions/error-notebook
+   * Caderno de erros paginado enriquecido com devolutivas em áudio/comentário do professor
+   */
+  async errorNotebook(req: Request, res: Response): Promise<Response> {
+    try {
+      const userId = req.user!.id;
+      const { page, limit, skip, take } = parsePaginationParams(
+        req.query as Record<string, any>,
+        30,
+        100
+      );
+
+      const wrongAttempts = await prisma.questionAttempt.findMany({
+        where: { userId, isCorrect: false },
+        orderBy: { createdAt: "desc" },
+        take: 150,
+        include: {
+          question: {
+            select: {
+              id: true,
+              subject: true,
+              topic: true,
+              area: true,
+              year: true,
+              difficulty: true,
+              text: true,
+              options: true,
+              correctAnswer: true,
+              explanation: true,
+            },
+          },
+        },
+      });
+
+      const userWithRooms = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { enrolledClassrooms: { select: { id: true } } },
+      });
+      const roomIds = (userWithRooms?.enrolledClassrooms || []).map((r) => r.id);
+
+      const uniqueMap = new Map<string, any>();
+      for (const att of wrongAttempts) {
+        if (!att.question) continue;
+        if (!uniqueMap.has(att.questionId)) {
+          uniqueMap.set(att.questionId, {
+            questionId: att.questionId,
+            lastAttemptId: att.id,
+            selectedAnswer: att.selectedAnswer,
+            lastErrorAt: att.createdAt,
+            errorCount: 1,
+            question: att.question,
+            teacherFeedbacks: [],
+          });
+        } else {
+          uniqueMap.get(att.questionId).errorCount += 1;
+        }
+      }
+
+      const allItems = Array.from(uniqueMap.values());
+      const pagedItems = allItems.slice(skip, skip + take);
+      const questionIds = pagedItems.map((i) => i.questionId);
+
+      if (roomIds.length > 0 && questionIds.length > 0) {
+        const feedbacks = await prisma.questionFeedback.findMany({
+          where: {
+            classroomId: { in: roomIds },
+            questionId: { in: questionIds },
+          },
+          include: {
+            teacher: { select: { id: true, name: true } },
+            classroom: { select: { id: true, name: true } },
+          },
+          orderBy: { createdAt: "desc" },
+        });
+
+        for (const fb of feedbacks) {
+          const entry = uniqueMap.get(fb.questionId);
+          if (entry) {
+            entry.teacherFeedbacks.push({
+              id: fb.id,
+              commentText: fb.commentText,
+              audioUrl: fb.audioUrl,
+              createdAt: fb.createdAt,
+              teacherName: fb.teacher.name,
+              classroomId: fb.classroom.id,
+              classroomName: fb.classroom.name,
+            });
+          }
+        }
+      }
+
+      setPaginationAndCacheHeaders(res, {
+        page,
+        limit,
+        total: allItems.length,
+        maxAgeSeconds: 15,
+      });
+
+      return res.json({
+        total: allItems.length,
+        page,
+        limit,
+        items: pagedItems,
+      });
     } catch (error) {
       return this.handleError(error, res);
     }

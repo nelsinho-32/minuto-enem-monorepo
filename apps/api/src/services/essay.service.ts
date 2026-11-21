@@ -444,6 +444,51 @@ export class EssayService {
 
     return updatedEssay;
   }
+
+  /**
+   * Lista as rubricas reutilizáveis (comentários frequentes C1–C5) do professor.
+   */
+  async listRubricPresets(teacherId: string) {
+    return prisma.essayRubricPreset.findMany({
+      where: { teacherId },
+      orderBy: [{ competency: "asc" }, { createdAt: "desc" }],
+    });
+  }
+
+  /**
+   * Salva uma nova rubrica reutilizável para correção rápida de redações.
+   */
+  async createRubricPreset(
+    teacherId: string,
+    input: { title?: string; content?: string; competency?: number }
+  ) {
+    const title = String(input.title || "").trim();
+    const content = String(input.content || "").trim();
+    const competency = Math.min(5, Math.max(0, Number(input.competency) || 0));
+
+    if (!title || !content) {
+      throw new AppError("Título e texto da rubrica são obrigatórios.", 400);
+    }
+
+    return prisma.essayRubricPreset.create({
+      data: {
+        teacherId,
+        competency,
+        title,
+        content,
+      },
+    });
+  }
+
+  /**
+   * Remove uma rubrica do professor.
+   */
+  async deleteRubricPreset(teacherId: string, rubricId: string) {
+    await prisma.essayRubricPreset.deleteMany({
+      where: { id: rubricId, teacherId },
+    });
+    return { message: "Rubrica removida." };
+  }
 }
 
 export const essayService = new EssayService();
