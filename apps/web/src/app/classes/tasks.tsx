@@ -49,21 +49,6 @@ export type Task = {
   status?: string;
 };
 
-export interface AiSuggestedTask {
-  id: string;
-  classId?: string;
-  subject: string;
-  topic: string;
-  title: string;
-  reason: string;
-  totalQuestions: number;
-  difficultyLevel: 'Fácil' | 'Médio' | 'Difícil';
-  suggestedDays: number;
-  instructions: string;
-  color: string;
-  icon: string;
-}
-
 export interface BankQuestionItem {
   id: string;
   year?: number;
@@ -87,54 +72,7 @@ const DEFAULT_SUBJECTS = [
   'Literatura',
   'Filosofia',
   'Sociologia',
-];
-
-const DEFAULT_AI_SUGGESTIONS: AiSuggestedTask[] = [
-  {
-    id: 'ai-sug-1',
-    subject: 'Física',
-    topic: 'Plano Inclinado e Atrito',
-    title: 'Lista de Reforço: Dinâmica e Atrito',
-    reason:
-      'Diagnóstico da IA: 42% dos alunos erraram decomposição de forças no último simulado.',
-    totalQuestions: 10,
-    difficultyLevel: 'Médio',
-    suggestedDays: 7,
-    instructions:
-      'Praticar cálculo de forças perpendiculares (Normal = P · cos θ) e força resultante paralela ao plano inclinado.',
-    color: '#58CC02',
-    icon: 'atom',
-  },
-  {
-    id: 'ai-sug-2',
-    subject: 'Matemática',
-    topic: 'Geometria Espacial e Volume',
-    title: 'Lista Intensiva: Prismas e Cilindros no ENEM',
-    reason:
-      'Diagnóstico da IA: Assunto recorrente com 35% de erros de fórmula de base e volume.',
-    totalQuestions: 12,
-    difficultyLevel: 'Difícil',
-    suggestedDays: 5,
-    instructions:
-      'Exercícios de aplicação direta e cálculo de capacidade cúbica em contextos cotidianos.',
-    color: '#FF4B4B',
-    icon: 'calculator',
-  },
-  {
-    id: 'ai-sug-3',
-    subject: 'Literatura',
-    topic: 'Modernismo Brasileiro (1ª Fase)',
-    title: 'Lista Temática: Semana de Arte Moderna de 1922',
-    reason:
-      'Diagnóstico da IA: Alta frequência na prova com dúvidas sobre ruptura com o academicismo.',
-    totalQuestions: 8,
-    difficultyLevel: 'Médio',
-    suggestedDays: 4,
-    instructions:
-      'Análise de poemas de Oswald de Andrade e Mário de Andrade focando na antropofagia cultural.',
-    color: '#1CB0F6',
-    icon: 'book-open',
-  },
+  'Redação',
 ];
 
 const INITIAL_MOCK_TASKS: { pending: Task[]; completed: Task[] } = {
@@ -266,7 +204,7 @@ export default function TasksScreen() {
   // =========================================================================
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [creationModeTab, setCreationModeTab] = useState<
-    'BANCO' | 'ASSUNTO' | 'AUTORAL' | 'IA'
+    'BANCO' | 'ASSUNTO' | 'AUTORAL' | 'REDACAO'
   >('BANCO');
 
   const defaultRoomId = classId || classrooms[0]?.id || '';
@@ -296,10 +234,8 @@ export default function TasksScreen() {
   const [authorCorrectIndex, setAuthorCorrectIndex] = useState<number>(0);
   const [authorExplanation, setAuthorExplanation] = useState('');
 
-  // Aba 4: Copiloto Docente com IA
-  const [aiSuggestionsList, setAiSuggestionsList] = useState<AiSuggestedTask[]>(DEFAULT_AI_SUGGESTIONS);
-  const [approvingId, setApprovingId] = useState<string | null>(null);
-  const [isGeneratingAi, setIsGeneratingAi] = useState(false);
+  // Aba 4: Proposta de Redação (Oficina Nota 1000)
+  const [essayTheme, setEssayTheme] = useState('');
 
   // Abre o modal de criação se o parâmetro openNewTask estiver na URL
   useEffect(() => {
@@ -538,6 +474,16 @@ export default function TasksScreen() {
           total: 1,
         };
       }
+      // MODO 4: PROPOSTA DE REDAÇÃO (OFICINA NOTA 1000)
+      else if (creationModeTab === 'REDACAO') {
+        payload = {
+          ...payload,
+          creationMode: 'ESSAY',
+          subject: 'Redação',
+          topic: essayTheme.trim() || taskTitle.trim(),
+          total: 1,
+        };
+      }
 
       // Envia criação para o back-end
       await createTaskInStore(payload);
@@ -555,6 +501,7 @@ export default function TasksScreen() {
       setAuthorQuestionText('');
       setAuthorOptions(['', '', '', '', '']);
       setRandomTopic('');
+      setEssayTheme('');
 
       Alert.alert(
         'Lista Publicada!',
@@ -565,76 +512,6 @@ export default function TasksScreen() {
       Alert.alert('Falha ao Criar Lista', msg);
     } finally {
       setIsSubmittingTask(false);
-    }
-  };
-
-  /**
-   * Aprova uma sugestão de lista de exercícios da IA
-   */
-  const handleApproveAndSendToClass = async (suggestion: AiSuggestedTask) => {
-    setApprovingId(suggestion.id);
-    try {
-      const targetRoomId = selectedClassId || classId || defaultRoomId;
-      const calcDueDate = new Date();
-      calcDueDate.setDate(calcDueDate.getDate() + suggestion.suggestedDays);
-
-      await createTaskInStore({
-        classroomId: targetRoomId,
-        creationMode: 'AI_GENERATED',
-        title: suggestion.title,
-        subject: suggestion.subject,
-        topic: suggestion.topic,
-        instructions: suggestion.instructions,
-        total: suggestion.totalQuestions,
-        quantity: suggestion.totalQuestions,
-        difficulty:
-          suggestion.difficultyLevel === 'Fácil'
-            ? 'EASY'
-            : suggestion.difficultyLevel === 'Difícil'
-            ? 'HARD'
-            : 'MEDIUM',
-        dueDate: calcDueDate.toISOString(),
-      });
-
-      queryClient.invalidateQueries({ queryKey: ['teacher-tracking'] });
-      queryClient.invalidateQueries({ queryKey: ['classroom-tasks-list'] });
-      refetchRemoteTasks();
-
-      setAiSuggestionsList((prev) => prev.filter((s) => s.id !== suggestion.id));
-      setIsCreateModalOpen(false);
-
-      Alert.alert(
-        'Lista da IA Aprovada!',
-        `A lista "${suggestion.title}" foi aprovada e publicada para a turma.`
-      );
-    } catch (err: any) {
-      Alert.alert('Erro', err.message || 'Não foi possível aprovar a sugestão da IA.');
-    } finally {
-      setApprovingId(null);
-    }
-  };
-
-  const handleGenerateNewAiSuggestion = async () => {
-    setIsGeneratingAi(true);
-    try {
-      const fallbackNew: AiSuggestedTask = {
-        id: `ai-gen-${Date.now()}`,
-        subject: filterSubject || 'Matemática',
-        topic: 'Análise Combinatória e Probabilidade',
-        title: 'Treino de Precisão: Arranjos e Combinações no ENEM',
-        reason:
-          'Diagnóstico da IA: Baixa taxa de acertos em questões que exigem o princípio fundamental da contagem.',
-        totalQuestions: 10,
-        difficultyLevel: 'Médio',
-        suggestedDays: 6,
-        instructions:
-          'Identificar a diferença quando a ordem dos elementos importa (arranjo) ou não importa (combinação).',
-        color: '#FF4B4B',
-        icon: 'calculator',
-      };
-      setAiSuggestionsList((prev) => [fallbackNew, ...prev]);
-    } finally {
-      setIsGeneratingAi(false);
     }
   };
 
@@ -1210,22 +1087,22 @@ export default function TasksScreen() {
                 <TouchableOpacity
                   style={[
                     styles.builderTabBtn,
-                    creationModeTab === 'IA' && styles.builderTabBtnActive,
+                    creationModeTab === 'REDACAO' && styles.builderTabBtnActive,
                   ]}
-                  onPress={() => setCreationModeTab('IA')}
+                  onPress={() => setCreationModeTab('REDACAO')}
                 >
                   <FontAwesome5
-                    name="robot"
+                    name="pen-fancy"
                     size={11}
-                    color={creationModeTab === 'IA' ? '#8E44AD' : '#64748B'}
+                    color={creationModeTab === 'REDACAO' ? '#8E44AD' : '#64748B'}
                   />
                   <Text
                     style={[
                       styles.builderTabText,
-                      creationModeTab === 'IA' && { color: '#8E44AD', fontWeight: 'bold' },
+                      creationModeTab === 'REDACAO' && { color: '#8E44AD', fontWeight: 'bold' },
                     ]}
                   >
-                    IA (Beta)
+                    Redação
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -1543,77 +1420,45 @@ export default function TasksScreen() {
               )}
 
               {/* ============================================================== */}
-              {/* ABA 4: GERAR COM IA (BETA)                                     */}
+              {/* ABA 4: PROPOSTA DE REDAÇÃO (OFICINA NOTA 1000)                 */}
               {/* ============================================================== */}
-              {creationModeTab === 'IA' && (
+              {creationModeTab === 'REDACAO' && (
                 <View style={styles.tabContentCard}>
                   <View style={styles.aiHeaderRow}>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.aiHeaderTitle}>Sugestões do Copiloto Docente</Text>
+                      <Text style={styles.aiHeaderTitle}>Oficina Nota 1000 — Proposta de Redação</Text>
                       <Text style={styles.aiHeaderSub}>
-                        Listas automáticas baseadas nas lacunas de aprendizagem da turma.
+                        Os alunos enviarão a foto da folha manuscrita para você corrigir nas 5 competências do ENEM.
                       </Text>
                     </View>
-                    <TouchableOpacity
-                      style={styles.refreshAiBtn}
-                      activeOpacity={0.8}
-                      onPress={handleGenerateNewAiSuggestion}
-                      disabled={isGeneratingAi}
-                    >
-                      {isGeneratingAi ? (
-                        <ActivityIndicator size="small" color="#8E44AD" />
-                      ) : (
-                        <>
-                          <FontAwesome5 name="magic" size={11} color="#8E44AD" />
-                          <Text style={styles.refreshAiBtnText}>Gerar Mais</Text>
-                        </>
-                      )}
-                    </TouchableOpacity>
                   </View>
 
-                  {aiSuggestionsList.map((suggestion) => {
-                    const isApproving = approvingId === suggestion.id;
-                    return (
-                      <View key={suggestion.id} style={styles.aiCardMini}>
-                        <View style={styles.aiCardMiniTop}>
-                          <View style={styles.aiBadgeTag}>
-                            <FontAwesome5 name="robot" size={10} color="#8E44AD" />
-                            <Text style={styles.aiBadgeTagText}>Sugestão IA</Text>
-                          </View>
-                          <Text style={styles.aiChipText}>
-                            {suggestion.difficultyLevel} • {suggestion.totalQuestions} questões
-                          </Text>
-                        </View>
-
-                        <Text style={styles.aiCardTitle}>{suggestion.title}</Text>
-                        <Text style={styles.aiCardReason}>{suggestion.reason}</Text>
-
-                        <TouchableOpacity
-                          style={[styles.aiApproveBtn, isApproving && { opacity: 0.7 }]}
-                          activeOpacity={0.85}
-                          onPress={() => handleApproveAndSendToClass(suggestion)}
-                          disabled={isApproving}
-                        >
-                          {isApproving ? (
-                            <ActivityIndicator size="small" color="#FFF" />
-                          ) : (
-                            <>
-                              <FontAwesome5 name="paper-plane" size={12} color="#FFF" />
-                              <Text style={styles.aiApproveBtnText}>
-                                Aprovar e Enviar para a Turma
-                              </Text>
-                            </>
-                          )}
-                        </TouchableOpacity>
-                      </View>
-                    );
-                  })}
+                  <View style={{ marginTop: 12 }}>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#475569', marginBottom: 6 }}>
+                      Tema / Recorte Temático da Redação
+                    </Text>
+                    <TextInput
+                      style={{
+                        backgroundColor: '#F8FAFC',
+                        borderWidth: 1,
+                        borderColor: '#CBD5E1',
+                        borderRadius: 10,
+                        paddingHorizontal: 12,
+                        paddingVertical: 10,
+                        fontSize: 13,
+                        color: '#1E293B',
+                      }}
+                      placeholder="Ex.: Desafios para a valorização da educação pública no Brasil"
+                      placeholderTextColor="#94A3B8"
+                      value={essayTheme}
+                      onChangeText={setEssayTheme}
+                    />
+                  </View>
                 </View>
               )}
 
-              {/* BOTÕES FINAIS DE AÇÃO (PARA ABAS BANCO, ASSUNTO E AUTORAL) */}
-              {creationModeTab !== 'IA' && (
-                <View style={styles.modalBottomActions}>
+              {/* BOTÕES FINAIS DE AÇÃO */}
+              <View style={styles.modalBottomActions}>
                   <TouchableOpacity
                     style={styles.modalCancelBtn}
                     onPress={() => setIsCreateModalOpen(false)}
@@ -1639,13 +1484,14 @@ export default function TasksScreen() {
                         <Text style={styles.modalPublishBtnText}>
                           {creationModeTab === 'BANCO'
                             ? `Publicar (${selectedQuestionIds.size} questões)`
+                            : creationModeTab === 'REDACAO'
+                            ? 'Publicar Proposta de Redação'
                             : 'Publicar Lista para a Turma'}
                         </Text>
                       </>
                     )}
                   </TouchableOpacity>
                 </View>
-              )}
             </ScrollView>
           </View>
         </KeyboardAvoidingView>

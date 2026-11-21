@@ -333,7 +333,7 @@ export default function NotesScreen() {
               <Text style={styles.emptyText}>
                 {activeTab === 'questions'
                   ? 'Ao resolver questões do ENEM, salve macetes para revisar depois.'
-                  : 'Toque no botão (+) abaixo para criar um novo resumo ou gerar com IA.'}
+                  : 'Toque no botão (+) abaixo para criar um novo resumo ou anotação de estudo.'}
               </Text>
             </View>
           ) : (

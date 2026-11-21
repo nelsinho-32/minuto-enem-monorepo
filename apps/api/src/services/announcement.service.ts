@@ -114,7 +114,19 @@ export class AnnouncementService {
       }
 
       if (schoolIds.length === 0) {
-        return [];
+        return prisma.announcement.findMany({
+          where: {
+            targetAudience: AnnouncementAudience.ALL,
+            title: { contains: "ENEM 2026" },
+          },
+          include: {
+            school: {
+              select: { id: true, name: true, code: true, slug: true },
+            },
+          },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+        });
       }
 
       return prisma.announcement.findMany({
@@ -156,7 +168,19 @@ export class AnnouncementService {
       }
 
       if (schoolIds.length === 0) {
-        return [];
+        return prisma.announcement.findMany({
+          where: {
+            targetAudience: AnnouncementAudience.ALL,
+            title: { contains: "ENEM 2026" },
+          },
+          include: {
+            school: {
+              select: { id: true, name: true, code: true, slug: true },
+            },
+          },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+        });
       }
 
       return prisma.announcement.findMany({

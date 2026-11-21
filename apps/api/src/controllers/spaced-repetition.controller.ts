@@ -29,6 +29,31 @@ export class SpacedRepetitionController {
   }
 
   /**
+   * GET /reviews/today e GET /api/spaced-repetition/today
+   * Feed Diário: retorna até 20 questões cuja data de revisão seja menor ou igual a hoje.
+   */
+  async getTodayReviews(req: Request, res: Response): Promise<Response> {
+    try {
+      const userId = this.resolveUserId(req);
+      const limit = req.query.limit ? Number(req.query.limit) : 20;
+
+      if (!userId) {
+        return res
+          .status(401)
+          .json({ error: "Usuário não autenticado ou userId não fornecido." });
+      }
+
+      const result = await spacedRepetitionService.getTodayReviews(
+        userId,
+        limit
+      );
+      return res.status(200).json(result);
+    } catch (error) {
+      return this.handleError(error, res);
+    }
+  }
+
+  /**
    * GET /api/spaced-repetition/due
    * Retorna os flashcards agendados para o dia de hoje (SM-2).
    */
@@ -54,14 +79,14 @@ export class SpacedRepetitionController {
   }
 
   /**
-   * POST /api/spaced-repetition/review
+   * POST /api/spaced-repetition/review e POST /api/reviews/answer
    * Registra a revisão do aluno aplicando o algoritmo SM-2.
-   * Body: { questionId: string, grade?: number (0..5), isCorrect?: boolean }
+   * Body: { questionId: string, grade?: number (0..5), isCorrect?: boolean, timeSpentMs?: number }
    */
   async submitReview(req: Request, res: Response): Promise<Response> {
     try {
       const userId = this.resolveUserId(req);
-      const { questionId, grade, isCorrect } = req.body;
+      const { questionId, grade, isCorrect, timeSpentMs, selectedAnswer } = req.body;
 
       if (!userId) {
         return res
@@ -69,11 +94,17 @@ export class SpacedRepetitionController {
           .json({ error: "Usuário não autenticado ou userId não fornecido." });
       }
 
-      const result = await spacedRepetitionService.reviewCard({
+      if (!questionId) {
+        return res.status(400).json({ error: "questionId é obrigatório." });
+      }
+
+      const result = await spacedRepetitionService.processAnswer({
         userId,
         questionId,
         grade,
         isCorrect,
+        timeSpentMs,
+        selectedAnswer,
       });
 
       return res.status(200).json(result);

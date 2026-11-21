@@ -995,13 +995,13 @@ export class QuestionService {
       }
     );
 
-    // 4. Atualiza os intervalos de repetição espaçada SM-2 (FlashcardReview)
+    // 4. Atualiza os intervalos de repetição espaçada SM-2 (SpacedRepetition)
     const sm2Result = await spacedRepetitionService
-      .reviewCard({
+      .processAnswer({
         userId: user.id,
         questionId: question.id,
         isCorrect,
-        grade: isCorrect ? 4 : 1,
+        timeSpentMs: timeSpentMs ? Number(timeSpentMs) : null,
       })
       .catch((err) => {
         console.warn("[SM-2 Update Error]:", err.message);

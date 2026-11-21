@@ -24,6 +24,7 @@ import { useUserStore } from '@/store/useUserStore';
 import { ConfirmModal } from '@/components/ConfirmModal';
 import { EmbeddedVideoPlayer } from '@/components/EmbeddedVideoPlayer';
 import { PdfViewerModal } from '@/components/PdfViewerModal';
+import { EssaySubmissionModal } from '@/components/EssaySubmissionModal';
 import { api } from '@/services/api';
 import { saveTasksLocal, getTasksLocal } from '@/database/schema';
 
@@ -220,6 +221,11 @@ export default function ClassroomDetailScreen() {
     p1: true,
   });
   const [readingMaterial, setReadingMaterial] = useState<any | null>(null);
+  const [selectedEssayTask, setSelectedEssayTask] = useState<{
+    id: string;
+    title: string;
+    topic?: string;
+  } | null>(null);
   const [viewingPdf, setViewingPdf] = useState<{
     visible: boolean;
     fileUrl: string;
@@ -915,6 +921,26 @@ export default function ClassroomDetailScreen() {
               </TouchableOpacity>
             )}
 
+            {/* Banner da Oficina Nota 1000 para o Professor */}
+            {user?.role === 'TEACHER' && (
+              <TouchableOpacity
+                style={[styles.highlightBanner, { borderColor: '#E9D5FF', backgroundColor: '#FAF5FF', marginTop: -6 }]}
+                activeOpacity={0.8}
+                onPress={() => router.push('/teacher/essays' as any)}
+              >
+                <View style={[styles.actionIconBox, { backgroundColor: '#F3E8FF' }]}>
+                  <FontAwesome5 name="pen-fancy" size={17} color="#8E44AD" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.actionCardTitle, { color: '#6B21A8' }]}>Oficina Nota 1000 - Correções de Redação</Text>
+                  <Text style={styles.actionCardSub}>
+                    Avalie as folhas manuscritas enviadas pelos alunos com visualizador de zoom e 5 competências.
+                  </Text>
+                </View>
+                <FontAwesome5 name="chevron-right" size={14} color="#8CA0B3" />
+              </TouchableOpacity>
+            )}
+
             {/* Cabeçalho da Seção de Exercícios */}
             <View style={styles.exercisesHeaderRow}>
               <View style={{ flex: 1 }}>
@@ -1057,6 +1083,15 @@ export default function ClassroomDetailScreen() {
                     task.total || (Array.isArray(task.questionIds) ? task.questionIds.length : 10);
                   const sub = task.mySubmission;
 
+                  const isEssay =
+                    task.creationMode === 'ESSAY' ||
+                    task.creationMode === 'REDACAO' ||
+                    (task as any).type === 'ESSAY' ||
+                    taskTitle.toLowerCase().includes('redação') ||
+                    taskTitle.toLowerCase().includes('redacao') ||
+                    (task.topic && task.topic.toLowerCase().includes('redação')) ||
+                    (task.topic && task.topic.toLowerCase().includes('redacao'));
+
                   return (
                     <View
                       key={task.id}
@@ -1067,9 +1102,15 @@ export default function ClassroomDetailScreen() {
                     >
                       {/* Topo do Card: Matéria + Badge de Status */}
                       <View style={styles.taskCardTop}>
-                        <View style={styles.taskSubjectBadge}>
-                          <Text style={styles.taskSubjectBadgeText} numberOfLines={1}>
-                            {subjectName}
+                        <View style={[styles.taskSubjectBadge, isEssay && { backgroundColor: '#F3E8FF' }]}>
+                          {isEssay && (
+                            <FontAwesome5 name="pen-fancy" size={10} color="#8E44AD" style={{ marginRight: 4 }} />
+                          )}
+                          <Text
+                            style={[styles.taskSubjectBadgeText, isEssay && { color: '#8E44AD', fontWeight: '800' }]}
+                            numberOfLines={1}
+                          >
+                            {isEssay ? 'Oficina Nota 1000 • Redação' : subjectName}
                           </Text>
                         </View>
 
@@ -1120,8 +1161,10 @@ export default function ClassroomDetailScreen() {
                       {/* Metadados: Questões e Prazo */}
                       <View style={styles.taskMetaRow}>
                         <View style={styles.taskMetaItem}>
-                          <FontAwesome5 name="list-ol" size={11} color="#64748B" />
-                          <Text style={styles.taskMetaText}>{totalQuestions} questões</Text>
+                          <FontAwesome5 name={isEssay ? 'file-alt' : 'list-ol'} size={11} color="#64748B" />
+                          <Text style={styles.taskMetaText}>
+                            {isEssay ? '1 Folha Manuscrita' : `${totalQuestions} questões`}
+                          </Text>
                         </View>
 
                         {task.dueDate && (
@@ -1137,7 +1180,9 @@ export default function ClassroomDetailScreen() {
                           <View style={styles.taskMetaItem}>
                             <FontAwesome5 name="award" size={11} color="#16A34A" />
                             <Text style={[styles.taskMetaText, { color: '#16A34A', fontWeight: 'bold' }]}>
-                              {sub.correctCount !== undefined
+                              {isEssay
+                                ? `Nota: ${(sub.score * 100).toFixed(0)}/1000`
+                                : sub.correctCount !== undefined
                                 ? `${sub.correctCount}/${sub.totalQuestions || totalQuestions} acertos`
                                 : 'Finalizado'}
                             </Text>
@@ -1145,9 +1190,53 @@ export default function ClassroomDetailScreen() {
                         )}
                       </View>
 
-                      {/* Ação do Aluno */}
+                      {/* Ação do Aluno / Professor */}
                       <View style={styles.taskCardFooter}>
-                        {isCompleted ? (
+                        {isEssay ? (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                            {isCompleted && sub ? (
+                              <View style={styles.scorePill}>
+                                <Text style={styles.scorePillLabel}>Nota:</Text>
+                                <Text style={styles.scorePillValue}>
+                                  {(sub.score * 100).toFixed(0)}/1000
+                                </Text>
+                              </View>
+                            ) : (
+                              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                <FontAwesome5 name="camera" size={12} color="#8E44AD" style={{ marginRight: 6 }} />
+                                <Text style={{ fontSize: 12, color: '#64748B', fontWeight: '600' }}>Foto da Folha</Text>
+                              </View>
+                            )}
+
+                            {user?.role === 'TEACHER' ? (
+                              <TouchableOpacity
+                                style={[styles.solveExerciseBtn, { backgroundColor: '#0284C7' }]}
+                                activeOpacity={0.85}
+                                onPress={() => router.push('/teacher/essays' as any)}
+                              >
+                                <FontAwesome5 name="pen" size={11} color="#FFF" style={{ marginRight: 6 }} />
+                                <Text style={styles.solveExerciseBtnText}>Corrigir Redações</Text>
+                              </TouchableOpacity>
+                            ) : (
+                              <TouchableOpacity
+                                style={[styles.solveExerciseBtn, { backgroundColor: isCompleted ? '#16A34A' : '#8E44AD' }]}
+                                activeOpacity={0.85}
+                                onPress={() =>
+                                  setSelectedEssayTask({
+                                    id: task.id,
+                                    title: taskTitle,
+                                    topic: task.topic,
+                                  })
+                                }
+                              >
+                                <FontAwesome5 name={isCompleted ? 'eye' : 'camera'} size={11} color="#FFF" style={{ marginRight: 6 }} />
+                                <Text style={styles.solveExerciseBtnText}>
+                                  {isCompleted ? 'Ver Correção' : 'Enviar Foto da Redação'}
+                                </Text>
+                              </TouchableOpacity>
+                            )}
+                          </View>
+                        ) : isCompleted ? (
                           <View style={styles.completedFooterRow}>
                             <View style={styles.scorePill}>
                               <Text style={styles.scorePillLabel}>Nota:</Text>
@@ -1419,6 +1508,16 @@ export default function ClassroomDetailScreen() {
         pdfUrl={viewingPdf?.fileUrl}
         title={viewingPdf?.title}
         description={viewingPdf?.description}
+      />
+
+      {/* Modal de Envio e Correção de Redação (Oficina Nota 1000) */}
+      <EssaySubmissionModal
+        visible={Boolean(selectedEssayTask)}
+        onClose={() => setSelectedEssayTask(null)}
+        taskId={selectedEssayTask?.id || ''}
+        taskTitle={selectedEssayTask?.title || ''}
+        taskTopic={selectedEssayTask?.topic}
+        classroomId={classroom.id}
       />
     </SafeAreaView>
   );

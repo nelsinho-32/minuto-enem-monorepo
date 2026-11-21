@@ -13,3 +13,5 @@ export * from "./schemas/streak.schema";
 export * from "./schemas/duel.schema";
 export * from "./schemas/sync.schema";
 export * from "./schemas/announcement.schema";
+export * from "./schemas/spaced-repetition.schema";
+export * from "./schemas/essay.schema";

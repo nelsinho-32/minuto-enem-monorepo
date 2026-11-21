@@ -20,16 +20,6 @@ classroomRoutes.get("/teacher-tracking", auth, isTeacher, (req, res) =>
   classroomController.teacherTracking(req, res)
 );
 
-// Sugestões do Copiloto Docente com IA
-classroomRoutes.get("/tasks/ai-suggestions", auth, isTeacher, (req, res) =>
-  classroomController.getAiSuggestions(req, res)
-);
-
-// Aprovação de Sugestão de Tarefa pelo Professor
-classroomRoutes.post("/tasks/approve-suggestion", auth, isTeacher, (req, res) =>
-  classroomController.approveSuggestion(req, res)
-);
-
 // Aprovação da Tarefa de Reforço pelo Professor
 classroomRoutes.patch("/tasks/:taskId/approve", auth, isTeacher, (req, res) =>
   classroomController.approveTask(req, res)
@@ -130,7 +120,7 @@ classroomRoutes.delete("/:id", auth, isTeacher, (req, res) =>
   classroomController.delete(req, res)
 );
 
-// Copiloto Docente: Diagnóstico Analítico da Turma e Geração Automática de Tarefa de Reforço
+// Diagnóstico Analítico da Turma e Geração de Tarefa de Reforço baseada em erros reais
 classroomRoutes.get("/:id/copilot-analytics", auth, isTeacher, (req, res) =>
   classroomController.copilotAnalytics(req, res)
 );

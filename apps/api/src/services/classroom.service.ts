@@ -885,7 +885,7 @@ export class ClassroomService {
   }
 
   /**
-   * Copiloto Docente:
+   * Diagnóstico Analítico da Turma:
    * Agrega os dados de erros da turma, diagnostica as maiores lacunas de aprendizado
    * e gera automaticamente uma Task de reforço pendente de aprovação do professor.
    */
@@ -1128,7 +1128,7 @@ export class ClassroomService {
       dueDate.setDate(dueDate.getDate() + 7);
 
       const taskTitle = `Reforço Focado: ${targetSubject} (${targetArea})`;
-      const taskDescription = `[Copiloto Docente - Sugestão Automática] Identificamos que a turma apresentou ${primaryDeficit?.errorCount} erro(s) em ${targetSubject} (${primaryDeficit?.errorRatePercent}% de erro). Esta lista traz as questões de maior incidência de distratores para nivelamento.`;
+      const taskDescription = `[Reforço da Turma] Identificamos que a turma apresentou ${primaryDeficit?.errorCount} erro(s) em ${targetSubject} (${primaryDeficit?.errorRatePercent}% de erro). Esta lista traz as questões de maior incidência de distratores para nivelamento.`;
 
       generatedTask = await prisma.task.create({
         data: {
@@ -1172,7 +1172,7 @@ export class ClassroomService {
   }
 
   /**
-   * Aprovação de uma tarefa gerada pelo Copiloto Docente.
+   * Aprovação de uma tarefa de reforço pelo professor.
    */
   async approveTask(taskId: string, teacherId?: string) {
     if (!taskId) {
@@ -1515,115 +1515,6 @@ export class ClassroomService {
       assignments,
       materials,
     };
-  }
-
-  /**
-   * Retorna sugestões pedagógicas inteligentes do Copiloto Docente com base nos erros reais.
-   */
-  async getAiTaskSuggestions(classId?: string, subject?: string) {
-    const questions = await prisma.question.findMany({
-      where: {
-        errorRate: { gte: 0.35 },
-        ...(subject
-          ? { subject: { contains: subject, mode: "insensitive" } }
-          : {}),
-      },
-      take: 8,
-      orderBy: { errorRate: "desc" },
-    });
-
-    if (questions.length > 0) {
-      const topicsMap = new Map<string, typeof questions>();
-      for (const q of questions) {
-        const topic = q.subject || "Geral";
-        const list = topicsMap.get(topic) || [];
-        list.push(q);
-        topicsMap.set(topic, list);
-      }
-
-      const suggestions = Array.from(topicsMap.entries()).map(
-        ([subj, qList], idx) => {
-          const avgError = Math.round(
-            (qList.reduce(
-              (acc, curr) => acc + (curr.errorRate || 0.4),
-              0
-            ) /
-              qList.length) *
-              100
-          );
-          return {
-            id: `ai-sug-${idx + 1}`,
-            classId,
-            subject: subj,
-            topic: `Reforço ENEM: ${subj}`,
-            title: `Lista de Fixação: ${subj} (Distratores Comuns)`,
-            reason: `Diagnóstico da IA: ${avgError}% de taxa média de erro nas questões selecionadas da base nacional.`,
-            totalQuestions: qList.length,
-            difficultyLevel: (avgError > 50 ? "Difícil" : "Médio") as
-              | "Fácil"
-              | "Médio"
-              | "Difícil",
-            suggestedDays: 7,
-            instructions: `Revisar os distratores e fundamentação teórica antes de submeter as respostas.`,
-            color: subj.toLowerCase().includes("mat")
-              ? "#FF4B4B"
-              : subj.toLowerCase().includes("fís")
-              ? "#58CC02"
-              : "#1CB0F6",
-            icon: subj.toLowerCase().includes("mat")
-              ? "calculator"
-              : subj.toLowerCase().includes("fís")
-              ? "atom"
-              : "book-open",
-            questionIds: qList.map((q) => q.id),
-          };
-        }
-      );
-
-      return suggestions;
-    }
-
-    return [];
-  }
-
-  /**
-   * Aprova uma sugestão do Copiloto Docente e cria a lista como Task ativa no banco.
-   */
-  async approveCopilotSuggestion(data: any, teacherId?: string) {
-    const {
-      classId,
-      title,
-      subject,
-      topic,
-      instructions,
-      totalQuestions,
-      questionIds = [],
-    } = data;
-
-    const classroom = classId
-      ? await prisma.classroom.findFirst({
-          where: { OR: [{ id: classId }, { code: classId }] },
-        })
-      : null;
-
-    const dueDate = new Date();
-    dueDate.setDate(dueDate.getDate() + 7);
-
-    const newTask = await prisma.task.create({
-      data: {
-        title: title || `Lista: ${topic}`,
-        topic: `${subject}: ${topic}`,
-        description: instructions,
-        total: totalQuestions || questionIds.length || 10,
-        questionIds,
-        dueDate,
-        status: "APPROVED",
-        classId: classroom ? classroom.code : classId || "GERAL",
-        classroomId: classroom?.id || null,
-      },
-    });
-
-    return newTask;
   }
 
   /**

@@ -8,6 +8,7 @@ import {
   Image,
   TextInput,
   ActivityIndicator,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Href, useRouter } from "expo-router";
@@ -20,26 +21,50 @@ import { WeeklyStreakCalendar } from "@/components/WeeklyStreakCalendar";
 import { CreateRoomButton } from "@/components/CreateRoomButton";
 import { useClassroomStore } from "@/store/useClassroomStore";
 import { SchoolMuralCard } from "@/components/SchoolMuralCard";
+import { ElasticSearchBar } from "@/components/ElasticSearchBar";
+import { NotificationsModal } from "@/components/NotificationsModal";
+
+type HomeTab = "INICIO" | "MATERIAS" | "TURMA";
+type AreaFilter = "TODAS" | "LINGUAGENS" | "HUMANAS" | "NATUREZA" | "MATEMATICA";
 
 function getSubjectTheme(slug: string, name: string) {
   const lower = (slug + " " + name).toLowerCase();
-  if (lower.includes("matem")) return { icon: "calculator", color: "#1CB0F6" };
+  if (lower.includes("matem"))
+    return { icon: "calculator", color: "#0284C7", area: "MATEMATICA" as AreaFilter };
+  if (lower.includes("redac") || lower.includes("redaç"))
+    return { icon: "pen-fancy", color: "#7C3AED", area: "LINGUAGENS" as AreaFilter };
   if (lower.includes("portug") || lower.includes("língua"))
-    return { icon: "book-open", color: "#FF4B4B" };
-  if (lower.includes("literat")) return { icon: "book", color: "#FF4B4B" };
-  if (lower.includes("arte")) return { icon: "palette", color: "#FF4B4B" };
+    return { icon: "book-open", color: "#E11D48", area: "LINGUAGENS" as AreaFilter };
+  if (lower.includes("literat"))
+    return { icon: "book", color: "#E11D48", area: "LINGUAGENS" as AreaFilter };
+  if (lower.includes("arte"))
+    return { icon: "palette", color: "#EC4899", area: "LINGUAGENS" as AreaFilter };
   if (lower.includes("ingl") || lower.includes("espanh") || lower.includes("idiom"))
-    return { icon: "globe", color: "#FF4B4B" };
+    return { icon: "globe", color: "#F43F5E", area: "LINGUAGENS" as AreaFilter };
   if (lower.includes("físic") && lower.includes("educ"))
-    return { icon: "running", color: "#FF4B4B" };
-  if (lower.includes("histór")) return { icon: "landmark", color: "#FF9600" };
-  if (lower.includes("geograf")) return { icon: "map", color: "#FF9600" };
-  if (lower.includes("filosof")) return { icon: "brain", color: "#FF9600" };
-  if (lower.includes("sociolog")) return { icon: "users", color: "#FF9600" };
-  if (lower.includes("biolog")) return { icon: "leaf", color: "#58CC02" };
-  if (lower.includes("químic")) return { icon: "flask", color: "#58CC02" };
-  if (lower.includes("físic")) return { icon: "atom", color: "#58CC02" };
-  return { icon: "graduation-cap", color: "#1CB0F6" };
+    return { icon: "running", color: "#F97316", area: "LINGUAGENS" as AreaFilter };
+  if (lower.includes("histór") || lower.includes("histor"))
+    return { icon: "landmark", color: "#D97706", area: "HUMANAS" as AreaFilter };
+  if (lower.includes("geograf"))
+    return { icon: "map", color: "#EA580C", area: "HUMANAS" as AreaFilter };
+  if (lower.includes("filosof"))
+    return { icon: "brain", color: "#B45309", area: "HUMANAS" as AreaFilter };
+  if (lower.includes("sociolog"))
+    return { icon: "users", color: "#D97706", area: "HUMANAS" as AreaFilter };
+  if (lower.includes("biolog"))
+    return { icon: "leaf", color: "#16A34A", area: "NATUREZA" as AreaFilter };
+  if (lower.includes("químic") || lower.includes("quimic"))
+    return { icon: "flask", color: "#059669", area: "NATUREZA" as AreaFilter };
+  if (lower.includes("físic") || lower.includes("fisic"))
+    return { icon: "atom", color: "#10B981", area: "NATUREZA" as AreaFilter };
+  return { icon: "graduation-cap", color: "#0284C7", area: "TODAS" as AreaFilter };
+}
+
+function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Bom dia";
+  if (hour < 18) return "Boa tarde";
+  return "Boa noite";
 }
 
 export default function HomeScreen() {
@@ -49,19 +74,26 @@ export default function HomeScreen() {
     currentStreak,
     iceFreezes,
     avatar,
+    targetCourse,
     validateStreakOnLogin,
     getWeekDays,
   } = useUserStore();
 
+  const [activeTab, setActiveTab] = useState<HomeTab>("INICIO");
+  const [areaFilter, setAreaFilter] = useState<AreaFilter>("TODAS");
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showNotifications, setShowNotifications] = useState(false);
+  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(2);
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [joinCodeInput, setJoinCodeInput] = useState("");
   const [joinError, setJoinError] = useState<string | null>(null);
+  const [isJoining, setIsJoining] = useState(false);
 
   const classrooms = useClassroomStore((state) => state.classrooms);
-  const joinClassroomByCode = useClassroomStore((state) => state.joinClassroomByCode);
+  const joinClassroomByCode = useClassroomStore(
+    (state) => state.joinClassroomByCode
+  );
   const fetchClassrooms = useClassroomStore((state) => state.fetchClassrooms);
 
   useEffect(() => {
@@ -76,7 +108,7 @@ export default function HomeScreen() {
 
   const weekDays = getWeekDays();
 
-  // 1. Busca Matérias reais da API com suporte Offline-First
+  // 1. Matérias reais da API (Offline-First)
   const { data: remoteSubjects = [] } = useQuery<any[]>({
     queryKey: ["subjects"],
     networkMode: "offlineFirst",
@@ -91,12 +123,14 @@ export default function HomeScreen() {
           return res;
         }
       } catch {}
-      const cached = await AsyncStorage.getItem("@minuto_enem:subjects_cache_v1");
+      const cached = await AsyncStorage.getItem(
+        "@minuto_enem:subjects_cache_v1"
+      );
       return cached ? JSON.parse(cached) : [];
     },
   });
 
-  // 2. Busca Estatísticas Reais do Aluno da API
+  // 2. Estatísticas do Aluno
   const { data: userStats } = useQuery<any>({
     queryKey: ["user-stats", user?.id],
     networkMode: "offlineFirst",
@@ -109,7 +143,7 @@ export default function HomeScreen() {
     },
   });
 
-  // 3. Busca Tarefas Reais do Aluno
+  // 3. Tarefas do Aluno
   const { data: remoteTasks = [] } = useQuery<any[]>({
     queryKey: ["tasks", user?.id],
     networkMode: "offlineFirst",
@@ -122,9 +156,26 @@ export default function HomeScreen() {
     },
   });
 
-  const pendingTasks = remoteTasks.filter((t) => t.status !== "COMPLETED").length;
+  // 4. Comunicados da Escola
+  const { data: remoteAnnouncements = [] } = useQuery<any[]>({
+    queryKey: ["announcements-home", user?.id],
+    networkMode: "offlineFirst",
+    queryFn: async () => {
+      try {
+        const res = await api.get<any[]>("/announcements");
+        return Array.isArray(res) ? res : [];
+      } catch {
+        return [];
+      }
+    },
+  });
+
+  const pendingTasks = remoteTasks.filter(
+    (t) => t.status !== "COMPLETED"
+  ).length;
   const overdueTasks = remoteTasks.filter(
-    (t) => t.dueDate && new Date(t.dueDate) < new Date() && t.status !== "COMPLETED"
+    (t) =>
+      t.dueDate && new Date(t.dueDate) < new Date() && t.status !== "COMPLETED"
   ).length;
 
   const difficultySubject =
@@ -132,11 +183,7 @@ export default function HomeScreen() {
     userStats?.topicsWithHighestError?.[0]?.subject ||
     "Matemática";
 
-  const muralSummary = {
-    pendingTasks,
-    overdueTasks,
-    difficultySubject,
-  };
+  const firstName = (user?.name || "Estudante").trim().split(/\s+/)[0];
 
   const formattedSubjects = useMemo(() => {
     return remoteSubjects.map((s: any) => {
@@ -146,19 +193,45 @@ export default function HomeScreen() {
         name: s.name,
         icon: theme.icon,
         color: theme.color,
+        area: theme.area,
+        lessonsCount: Array.isArray(s.lessons)
+          ? s.lessons.length
+          : s._count?.lessons ?? 0,
       };
     });
   }, [remoteSubjects]);
 
-  const filteredSubjects = searchQuery.trim()
-    ? formattedSubjects.filter((s) =>
-        s.name.toLowerCase().includes(searchQuery.trim().toLowerCase())
-      )
-    : formattedSubjects;
+  const visibleSubjects = useMemo(() => {
+    if (areaFilter === "TODAS") return formattedSubjects;
+    return formattedSubjects.filter((s) => s.area === areaFilter);
+  }, [formattedSubjects, areaFilter]);
+
+  const handleJoinClassroom = async () => {
+    const clean = joinCodeInput.trim().toUpperCase();
+    if (!clean) {
+      setJoinError("Digite o código da turma fornecido pelo professor.");
+      return;
+    }
+    setIsJoining(true);
+    setJoinError(null);
+    try {
+      await joinClassroomByCode(clean);
+      setJoinCodeInput("");
+      setShowJoinModal(false);
+    } catch (err: any) {
+      setJoinError(
+        err?.message || "Código inválido ou turma não encontrada."
+      );
+    } finally {
+      setIsJoining(false);
+    }
+  };
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* 1. HEADER */}
+    <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
+      {/* ======================================================== */}
+      {/* 1. CABEÇALHO LIMPO E MODERNO                             */}
+      {/* ======================================================== */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Image
@@ -169,7 +242,6 @@ export default function HomeScreen() {
         </View>
 
         <View style={styles.headerRight}>
-          {/* Botão de Pesquisa */}
           <TouchableOpacity
             style={[
               styles.headerIconButton,
@@ -183,12 +255,11 @@ export default function HomeScreen() {
           >
             <FontAwesome5
               name="search"
-              size={16}
-              color={showSearch ? "#1CB0F6" : "#2C3A47"}
+              size={15}
+              color={showSearch ? "#0284C7" : "#334155"}
             />
           </TouchableOpacity>
 
-          {/* Botão de Notificação */}
           <TouchableOpacity
             style={[
               styles.headerIconButton,
@@ -196,19 +267,20 @@ export default function HomeScreen() {
             ]}
             activeOpacity={0.7}
             onPress={() => {
-              setShowNotifications((prev) => !prev);
+              setShowNotifications(true);
               setShowSearch(false);
             }}
           >
             <FontAwesome5
               name="bell"
-              size={17}
-              color={showNotifications ? "#1CB0F6" : "#2C3A47"}
+              size={16}
+              color={showNotifications ? "#0284C7" : "#334155"}
             />
-            <View style={styles.notificationDot} />
+            {unreadNotificationsCount > 0 && (
+              <View style={styles.notificationDot} />
+            )}
           </TouchableOpacity>
 
-          {/* Atalho para o Perfil com Foto Dinâmica */}
           <TouchableOpacity
             style={styles.profileButton}
             activeOpacity={0.8}
@@ -221,552 +293,654 @@ export default function HomeScreen() {
               />
             ) : (
               <View style={styles.headerAvatarPlaceholder}>
-                <FontAwesome5 name="user" size={14} color="#FFF" />
+                <FontAwesome5 name="user" size={13} color="#FFF" />
               </View>
             )}
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Barra de Pesquisa Expansível */}
+      {/* BARRA DE PESQUISA ELÁSTICA EXPANSÍVEL */}
       {showSearch && (
-        <View style={styles.searchBarContainer}>
-          <FontAwesome5 name="search" size={14} color="#8CA0B3" />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Pesquisar matéria do ENEM..."
-            placeholderTextColor="#8CA0B3"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            autoFocus
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery("")}>
-              <FontAwesome5 name="times-circle" size={16} color="#8CA0B3" />
-            </TouchableOpacity>
-          )}
-        </View>
+        <ElasticSearchBar
+          query={searchQuery}
+          onChangeQuery={setSearchQuery}
+          userId={user?.id}
+          localSubjects={remoteSubjects}
+          localTasks={remoteTasks}
+          localClassrooms={classrooms}
+          autoFocus
+        />
       )}
 
-      {/* Painel Rápido de Notificações */}
-      {showNotifications && (
-        <View style={styles.notificationsDropdown}>
-          <Text style={styles.notificationsTitle}>Notificações</Text>
-          <TouchableOpacity
-            style={styles.notificationItem}
-            onPress={() => {
-              setShowNotifications(false);
-              router.push("/classes/tasks" as any);
-            }}
-          >
-            <FontAwesome5 name="exclamation-circle" size={14} color="#FF4B4B" />
-            <Text style={styles.notificationText}>
-              Você tem {muralSummary.overdueTasks} atividade atrasada e{" "}
-              {muralSummary.pendingTasks} para fazer.
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.notificationItem}
-            onPress={() => {
-              setShowNotifications(false);
-              router.push("/stats/errors");
-            }}
-          >
-            <FontAwesome5 name="microscope" size={14} color="#1CB0F6" />
-            <Text style={styles.notificationText}>
-              Recomendação: revisar erros de {muralSummary.difficultySubject}.
-            </Text>
-          </TouchableOpacity>
-        </View>
-      )}
+      {/* CENTRAL DE NOTIFICAÇÕES */}
+      <NotificationsModal
+        visible={showNotifications}
+        onClose={() => setShowNotifications(false)}
+        tasks={remoteTasks}
+        announcements={remoteAnnouncements}
+        difficultySubject={difficultySubject}
+        currentStreak={currentStreak}
+        onUnreadCountChange={setUnreadNotificationsCount}
+      />
 
+      {/* ======================================================== */}
+      {/* CONTEÚDO PRINCIPAL POR ABA                               */}
+      {/* ======================================================== */}
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* 2. OFENSIVA COMPACTA + MURAL LADO A LADO */}
-        <View style={styles.topOverviewRow}>
-          <WeeklyStreakCalendar
-            compact
-            currentStreak={currentStreak}
-            iceFreezes={iceFreezes}
-            weekDays={weekDays}
-            onPress={() => router.push("/streak")}
-          />
-
-          {/* MURAL DE ATIVIDADES E DIFICULDADES */}
-          <View style={styles.muralCard}>
-            <View style={styles.muralHeader}>
-              <FontAwesome5 name="clipboard-list" size={14} color="#1CB0F6" />
-              <Text style={styles.muralTitle}>Mural</Text>
-            </View>
-
-            <View style={styles.muralList}>
-              {/* Atividades para fazer */}
-              <TouchableOpacity
-                style={styles.muralItem}
-                activeOpacity={0.7}
-                onPress={() => router.push("/classes/tasks" as any)}
-              >
-                <View
-                  style={[styles.muralBadgeIcon, { backgroundColor: "#E0F2FE" }]}
-                >
-                  <FontAwesome5 name="tasks" size={11} color="#1CB0F6" />
-                </View>
-                <View style={styles.muralItemTexts}>
-                  <Text style={styles.muralItemValue}>
-                    {muralSummary.pendingTasks} para fazer
+        {/* ====================================================== */}
+        {/* ABA 1: INÍCIO (FOCO TOTAL NO QUE FAZER HOJE)           */}
+        {/* ====================================================== */}
+        {activeTab === "INICIO" && (
+          <>
+            {/* Saudação + Hero de Ação Imediata */}
+            <View style={styles.heroBanner}>
+              <View style={styles.heroTopRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.greetingText}>
+                    {getGreeting()}, {firstName}! 👋
                   </Text>
-                  <Text style={styles.muralItemLabel}>Atividades no prazo</Text>
-                </View>
-              </TouchableOpacity>
-
-              {/* Atividades atrasadas */}
-              <TouchableOpacity
-                style={styles.muralItem}
-                activeOpacity={0.7}
-                onPress={() => router.push("/classes/tasks" as any)}
-              >
-                <View
-                  style={[styles.muralBadgeIcon, { backgroundColor: "#FFF0D4" }]}
-                >
-                  <FontAwesome5
-                    name="exclamation-circle"
-                    size={11}
-                    color="#FF9600"
-                  />
-                </View>
-                <View style={styles.muralItemTexts}>
-                  <Text style={[styles.muralItemValue, { color: "#D97706" }]}>
-                    {muralSummary.overdueTasks} atrasada
+                  <Text style={styles.heroTitle}>
+                    Pronto para avançar rumo a {targetCourse || "sua aprovação"}?
                   </Text>
-                  <Text style={styles.muralItemLabel}>Prazo encerrado</Text>
                 </View>
-              </TouchableOpacity>
-
-              {/* Onde está com dificuldades */}
-              <TouchableOpacity
-                style={styles.muralItem}
-                activeOpacity={0.7}
-                onPress={() => router.push("/stats/errors")}
-              >
-                <View
-                  style={[styles.muralBadgeIcon, { backgroundColor: "#FFE4E6" }]}
-                >
-                  <FontAwesome5
-                    name="exclamation-triangle"
-                    size={10}
-                    color="#FF4B4B"
-                  />
-                </View>
-                <View style={styles.muralItemTexts}>
-                  <Text
-                    style={[styles.muralItemValue, { color: "#FF4B4B" }]}
-                    numberOfLines={1}
-                  >
-                    {muralSummary.difficultySubject}
-                  </Text>
-                  <Text style={styles.muralItemLabel}>Maior dificuldade</Text>
-                </View>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-
-        {/* ========================================== */}
-        {/* SEÇÃO B2B: PAINÉIS DE GESTÃO / ADMINISTRAÇÃO */}
-        {/* ========================================== */}
-        {user?.role === "ADMIN" && (
-          <View style={styles.section}>
-            <TouchableOpacity
-              style={styles.adminBanner}
-              activeOpacity={0.85}
-              onPress={() => router.push("/admin/schools" as any)}
-            >
-              <View style={styles.adminBannerIcon}>
-                <FontAwesome5 name="shield-alt" size={18} color="#9333EA" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.adminBannerTitle}>Painel Geral do Administrador</Text>
-                <Text style={styles.adminBannerSubtitle}>
-                  Gerenciar escolas parceiras, status de ativação e gestores escolares.
-                </Text>
-              </View>
-              <FontAwesome5 name="chevron-right" size={14} color="#9333EA" />
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {user?.role === "SCHOOL" && (
-          <View style={styles.section}>
-            <TouchableOpacity
-              style={styles.schoolBanner}
-              activeOpacity={0.85}
-              onPress={() => router.push("/school/dashboard" as any)}
-            >
-              <View style={styles.schoolBannerIcon}>
-                <FontAwesome5 name="school" size={18} color="#0284C7" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.schoolBannerTitle}>Dashboard da Escola</Text>
-                <Text style={styles.schoolBannerSubtitle}>
-                  Acompanhe ranking de turmas, engajamento e gerencie o corpo docente.
-                </Text>
-              </View>
-              <FontAwesome5 name="chevron-right" size={14} color="#0284C7" />
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* ========================================== */}
-        {/* MURAL INSTITUCIONAL DA ESCOLA              */}
-        {/* ========================================== */}
-        <View style={styles.section}>
-          <SchoolMuralCard />
-        </View>
-
-        {/* ========================================== */}
-        {/* SEÇÃO: MINHA TURMA                         */}
-        {/* ========================================== */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Minha Turma</Text>
-            <TouchableOpacity onPress={() => { setShowJoinModal(true); setJoinError(null); }}>
-              <Text style={styles.addClassText}>+ Código da Turma</Text>
-            </TouchableOpacity>
-          </View>
-
-          <CreateRoomButton />
-
-          {/* Modal / Caixa de Entrada com Código de Turma */}
-          {showJoinModal && (
-            <View style={styles.joinCodeBox}>
-              <View style={styles.joinCodeHeader}>
-                <Text style={styles.joinCodeTitle}>Entrar em uma Turma</Text>
-                <TouchableOpacity onPress={() => setShowJoinModal(false)}>
-                  <FontAwesome5 name="times" size={14} color="#8CA0B3" />
-                </TouchableOpacity>
-              </View>
-              <Text style={styles.joinCodeSub}>
-                Digite o código fornecido pelo seu professor (ex: FIS-2026, MAT-800).
-              </Text>
-              <View style={styles.joinCodeInputRow}>
-                <TextInput
-                  style={[styles.joinCodeInput, joinError ? styles.joinCodeInputError : null]}
-                  placeholder="CÓDIGO DA TURMA"
-                  placeholderTextColor="#A0AEC0"
-                  autoCapitalize="characters"
-                  value={joinCodeInput}
-                  onChangeText={(t) => {
-                    setJoinCodeInput(t);
-                    if (joinError) setJoinError(null);
-                  }}
-                />
                 <TouchableOpacity
-                  style={styles.joinCodeButton}
-                  onPress={async () => {
-                    if (!joinCodeInput.trim()) {
-                      setJoinError("Digite o código da turma.");
-                      return;
-                    }
-                    try {
-                      const res = await joinClassroomByCode(joinCodeInput);
-                      if (res.success && res.classroom) {
-                        setShowJoinModal(false);
-                        setJoinCodeInput("");
-                        router.push(`/classes/${res.classroom.id}` as any);
-                      } else {
-                        setJoinError(res.message);
-                      }
-                    } catch (err: any) {
-                      setJoinError(err?.message || "Erro ao entrar na turma.");
-                    }
-                  }}
+                  style={styles.streakPill}
+                  onPress={() => router.push("/streak")}
+                  activeOpacity={0.8}
                 >
-                  <Text style={styles.joinCodeButtonText}>Entrar</Text>
+                  <FontAwesome5 name="fire-alt" size={14} color="#EA580C" />
+                  <Text style={styles.streakPillText}>{currentStreak}d</Text>
                 </TouchableOpacity>
               </View>
-              {joinError && (
-                <View style={styles.joinErrorRow}>
-                  <FontAwesome5 name="exclamation-circle" size={12} color="#FF4B4B" />
-                  <Text style={styles.joinErrorText}>{joinError}</Text>
-                </View>
-              )}
-            </View>
-          )}
 
-          {/* Lista de Turmas Cadastradas / Ingressadas */}
-          {classrooms.length > 0 ? (
+              <Text style={styles.heroSubtitle}>
+                Foco recomendado hoje:{" "}
+                <Text style={{ fontWeight: "800", color: "#FFFFFF" }}>
+                  {difficultySubject}
+                </Text>
+              </Text>
+
+              <View style={styles.heroActionsRow}>
+                <TouchableOpacity
+                  style={styles.heroPrimaryBtn}
+                  activeOpacity={0.85}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/quiz",
+                      params: {
+                        mode: "pratica",
+                        subject: difficultySubject,
+                      },
+                    } as any)
+                  }
+                >
+                  <FontAwesome5 name="play" size={12} color="#0284C7" />
+                  <Text style={styles.heroPrimaryBtnText}>
+                    Continuar Estudando
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.heroSecondaryBtn}
+                  activeOpacity={0.85}
+                  onPress={() => setActiveTab("MATERIAS")}
+                >
+                  <Text style={styles.heroSecondaryBtnText}>Ver Matérias</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Painéis B2B (Somente para ADMIN / SCHOOL / TEACHER) */}
+            {user?.role === "ADMIN" && (
+              <TouchableOpacity
+                style={[styles.b2bCard, { borderColor: "#C4B5FD", backgroundColor: "#F5F3FF" }]}
+                activeOpacity={0.85}
+                onPress={() => router.push("/admin/schools" as any)}
+              >
+                <View style={[styles.b2bIconBox, { backgroundColor: "#7C3AED" }]}>
+                  <FontAwesome5 name="shield-alt" size={16} color="#FFF" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.b2bTitle, { color: "#5B21B6" }]}>
+                    Painel do Administrador (Escolas)
+                  </Text>
+                  <Text style={styles.b2bSub}>
+                    Cadastre e gerencie instituições parceiras.
+                  </Text>
+                </View>
+                <FontAwesome5 name="chevron-right" size={13} color="#7C3AED" />
+              </TouchableOpacity>
+            )}
+
+            {user?.role === "SCHOOL" && (
+              <TouchableOpacity
+                style={[styles.b2bCard, { borderColor: "#BAE6FD", backgroundColor: "#F0F9FF" }]}
+                activeOpacity={0.85}
+                onPress={() => router.push("/school/dashboard" as any)}
+              >
+                <View style={[styles.b2bIconBox, { backgroundColor: "#0284C7" }]}>
+                  <FontAwesome5 name="school" size={16} color="#FFF" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.b2bTitle, { color: "#0369A1" }]}>
+                    Painel da Direção Escolar
+                  </Text>
+                  <Text style={styles.b2bSub}>
+                    Ranking de turmas, corpo docente e mural institucional.
+                  </Text>
+                </View>
+                <FontAwesome5 name="chevron-right" size={13} color="#0284C7" />
+              </TouchableOpacity>
+            )}
+
+            {user?.role === "TEACHER" && (
+              <TouchableOpacity
+                style={[styles.b2bCard, { borderColor: "#E9D5FF", backgroundColor: "#FAF5FF" }]}
+                activeOpacity={0.85}
+                onPress={() => router.push("/teacher/essays" as any)}
+              >
+                <View style={[styles.b2bIconBox, { backgroundColor: "#8E44AD" }]}>
+                  <FontAwesome5 name="pen-fancy" size={15} color="#FFF" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.b2bTitle, { color: "#6B21A8" }]}>
+                    Oficina Nota 1000 — Corrigir Redações
+                  </Text>
+                  <Text style={styles.b2bSub}>
+                    Avalie redações manuscritas com zoom e 5 competências.
+                  </Text>
+                </View>
+                <FontAwesome5 name="chevron-right" size={13} color="#8E44AD" />
+              </TouchableOpacity>
+            )}
+
+            {/* Mural de Avisos e Notícias em Destaque na Home */}
+            <View style={{ marginBottom: 16 }}>
+              <SchoolMuralCard />
+            </View>
+
+            {/* Calendário de Ofensiva Compacto */}
+            <View style={styles.sectionBlock}>
+              <WeeklyStreakCalendar
+                compact
+                currentStreak={currentStreak}
+                iceFreezes={iceFreezes}
+                weekDays={weekDays}
+                onPress={() => router.push("/streak")}
+              />
+            </View>
+
+            {/* Pendências da Turma (Resumo Acionável em 1 Card) */}
+            <View style={styles.sectionBlock}>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionTitle}>Resumo do Dia</Text>
+                <TouchableOpacity onPress={() => setActiveTab("TURMA")}>
+                  <Text style={styles.sectionLink}>Ir para Turma</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.summaryRow}>
+                <TouchableOpacity
+                  style={styles.summaryMiniCard}
+                  activeOpacity={0.8}
+                  onPress={() => router.push("/classes/tasks" as any)}
+                >
+                  <View style={[styles.summaryIcon, { backgroundColor: "#E0F2FE" }]}>
+                    <FontAwesome5 name="tasks" size={14} color="#0284C7" />
+                  </View>
+                  <Text style={styles.summaryValue}>{pendingTasks}</Text>
+                  <Text style={styles.summaryLabel}>Para fazer</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.summaryMiniCard}
+                  activeOpacity={0.8}
+                  onPress={() => router.push("/classes/tasks" as any)}
+                >
+                  <View style={[styles.summaryIcon, { backgroundColor: "#FEF3C7" }]}>
+                    <FontAwesome5 name="clock" size={14} color="#D97706" />
+                  </View>
+                  <Text style={[styles.summaryValue, overdueTasks > 0 && { color: "#DC2626" }]}>
+                    {overdueTasks}
+                  </Text>
+                  <Text style={styles.summaryLabel}>Atrasadas</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.summaryMiniCard}
+                  activeOpacity={0.8}
+                  onPress={() => router.push("/chat" as any)}
+                >
+                  <View style={[styles.summaryIcon, { backgroundColor: "#DCFCE7" }]}>
+                    <FontAwesome5 name="comments" size={14} color="#16A34A" />
+                  </View>
+                  <Text style={styles.summaryValue}>{classrooms.length}</Text>
+                  <Text style={styles.summaryLabel}>Chats/Turmas</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Acesso Rápido: Modos de Estudo (Grade 2x2 Limpa) */}
+            <View style={styles.sectionBlock}>
+              <Text style={styles.sectionTitle}>Modos de Estudo</Text>
+              <View style={styles.quickGrid}>
+                <TouchableOpacity
+                  style={styles.quickGridCard}
+                  activeOpacity={0.85}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/quiz",
+                      params: { mode: "simulado" },
+                    } as any)
+                  }
+                >
+                  <View style={[styles.quickGridIcon, { backgroundColor: "#E0F2FE" }]}>
+                    <FontAwesome5 name="stopwatch" size={18} color="#0284C7" />
+                  </View>
+                  <Text style={styles.quickGridTitle}>Simulado ENEM</Text>
+                  <Text style={styles.quickGridSub}>Questões oficiais com TRI</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.quickGridCard}
+                  activeOpacity={0.85}
+                  onPress={() => router.push("/stats/errors" as any)}
+                >
+                  <View style={[styles.quickGridIcon, { backgroundColor: "#DCFCE7" }]}>
+                    <FontAwesome5 name="redo-alt" size={17} color="#16A34A" />
+                  </View>
+                  <Text style={styles.quickGridTitle}>Revisão Inteligente</Text>
+                  <Text style={styles.quickGridSub}>Foque onde mais errou</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.quickGridCard}
+                  activeOpacity={0.85}
+                  onPress={() => router.push("/challenge" as any)}
+                >
+                  <View style={[styles.quickGridIcon, { backgroundColor: "#FFEDD5" }]}>
+                    <FontAwesome5 name="bolt" size={18} color="#EA580C" />
+                  </View>
+                  <Text style={styles.quickGridTitle}>Duelo 1v1</Text>
+                  <Text style={styles.quickGridSub}>Desafie colegas ao vivo</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.quickGridCard}
+                  activeOpacity={0.85}
+                  onPress={() => router.push("/notes" as any)}
+                >
+                  <View style={[styles.quickGridIcon, { backgroundColor: "#FEF3C7" }]}>
+                    <FontAwesome5 name="book" size={17} color="#D97706" />
+                  </View>
+                  <Text style={styles.quickGridTitle}>Meu Caderno</Text>
+                  <Text style={styles.quickGridSub}>Resumos e macetes</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Atalho Compacto de Chats & Fórum Opcional */}
+            <TouchableOpacity
+              style={styles.chatCompactCard}
+              activeOpacity={0.85}
+              onPress={() => router.push("/chat" as any)}
+            >
+              <View style={styles.chatCompactIcon}>
+                <FontAwesome5 name="user-friends" size={16} color="#0284C7" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.chatCompactTitle}>
+                  Chats com Colegas, Professores & Escola
+                </Text>
+                <Text style={styles.chatCompactSub}>
+                  Tire dúvidas no privado, na turma ou acesse o Fórum opcional
+                </Text>
+              </View>
+              <FontAwesome5 name="chevron-right" size={13} color="#0284C7" />
+            </TouchableOpacity>
+          </>
+        )}
+
+        {/* ====================================================== */}
+        {/* ABA 2: MATÉRIAS DO ENEM (14 DISCIPLINAS + FILTRO ÁREA) */}
+        {/* ====================================================== */}
+        {activeTab === "MATERIAS" && (
+          <View style={styles.sectionBlock}>
+            <Text style={styles.tabPageTitle}>Matérias do ENEM</Text>
+            <Text style={styles.tabPageSub}>
+              Escolha uma disciplina para assistir videoaulas, ler resumos e praticar questões oficiais.
+            </Text>
+
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.classroomsScroll}
+              contentContainerStyle={styles.areaChipsRow}
             >
-              {classrooms.map((c) => (
+              {[
+                { key: "TODAS" as AreaFilter, label: "Todas" },
+                { key: "LINGUAGENS" as AreaFilter, label: "Linguagens & Redação" },
+                { key: "HUMANAS" as AreaFilter, label: "Humanas" },
+                { key: "NATUREZA" as AreaFilter, label: "Natureza" },
+                { key: "MATEMATICA" as AreaFilter, label: "Matemática" },
+              ].map((chip) => {
+                const active = areaFilter === chip.key;
+                return (
+                  <TouchableOpacity
+                    key={chip.key}
+                    style={[styles.areaChip, active && styles.areaChipActive]}
+                    onPress={() => setAreaFilter(chip.key)}
+                  >
+                    <Text
+                      style={[
+                        styles.areaChipText,
+                        active && styles.areaChipTextActive,
+                      ]}
+                    >
+                      {chip.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <View style={styles.subjectsGrid}>
+              {visibleSubjects.map((subject) => (
                 <TouchableOpacity
-                  key={c.id}
-                  style={[styles.classroomBadgeCard, { borderLeftColor: c.themeColor }]}
-                  activeOpacity={0.8}
-                  onPress={() => router.push(`/classes/${c.id}` as any)}
+                  key={subject.id}
+                  style={styles.subjectCard}
+                  activeOpacity={0.85}
+                  onPress={() =>
+                    router.push(`/subject/${subject.id}` as Href)
+                  }
                 >
-                  <View style={[styles.classroomBadgeIcon, { backgroundColor: c.themeColor }]}>
-                    <FontAwesome5 name={c.icon || "chalkboard-teacher"} size={13} color="#FFF" />
+                  <View
+                    style={[
+                      styles.subjectIconCircle,
+                      { backgroundColor: `${subject.color}18` },
+                    ]}
+                  >
+                    <FontAwesome5
+                      name={subject.icon}
+                      size={20}
+                      color={subject.color}
+                    />
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.classroomBadgeName} numberOfLines={1}>{c.name}</Text>
-                    <Text style={styles.classroomBadgeSub}>Código: {c.code}</Text>
-                  </View>
-                  <FontAwesome5 name="chevron-right" size={10} color="#8CA0B3" />
+                  <Text style={styles.subjectCardTitle} numberOfLines={2}>
+                    {subject.name}
+                  </Text>
+                  <Text style={styles.subjectCardMeta}>
+                    {subject.lessonsCount > 0
+                      ? `${subject.lessonsCount} aulas + vídeos`
+                      : "Aulas & Questões"}
+                  </Text>
                 </TouchableOpacity>
               ))}
-            </ScrollView>
-          ) : (
-            <View style={styles.emptyClassroomCard}>
-              <FontAwesome5 name="info-circle" size={14} color="#8CA0B3" />
-              <Text style={styles.emptyClassroomText}>
-                {user?.role === "TEACHER"
-                  ? "Você ainda não possui turmas criadas. Use o botão acima para criar sua turma."
-                  : "Você ainda não está em nenhuma turma. Solicite o código ao seu professor e clique em \"+ Código da Turma\" para ingressar."}
-              </Text>
             </View>
-          )}
-
-          <View style={styles.row}>
-            {/* Vai para a Tela de Tarefas (Questões) */}
-            <TouchableOpacity
-              style={[
-                styles.card,
-                { backgroundColor: "#F0F9FF", borderColor: "#BAE6FD" },
-              ]}
-              activeOpacity={0.7}
-              onPress={() => router.push("/classes/tasks" as any)}
-            >
-              <FontAwesome5 name="tasks" size={24} color="#1CB0F6" />
-              <Text style={styles.cardTitle}>Tarefas</Text>
-              <Text style={styles.cardSub}>2 listas pendentes</Text>
-            </TouchableOpacity>
-
-            {/* Vai para a Tela de Materiais (Teoria/Vídeos) */}
-            <TouchableOpacity
-              style={[
-                styles.card,
-                { backgroundColor: "#F8FAFC", borderColor: "#E2E8F0" },
-              ]}
-              activeOpacity={0.7}
-              onPress={() => router.push("/classes/materials" as any)}
-            >
-              <FontAwesome5 name="folder-open" size={24} color="#8CA0B3" />
-              <Text style={styles.cardTitle}>Materiais</Text>
-              <Text style={styles.cardSub}>Resumos e vídeos</Text>
-            </TouchableOpacity>
           </View>
-        </View>
+        )}
 
-        {/* 3. MODOS DE JOGO */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Modos de Estudo</Text>
-
-          <TouchableOpacity
-            style={[
-              styles.mainActionCard,
-              { backgroundColor: "#58CC02", shadowColor: "#58CC02" },
-            ]}
-            activeOpacity={0.8}
-            onPress={() => router.push("/quiz")}
-          >
-            <View style={styles.mainActionIcon}>
-              <FontAwesome5 name="dice" size={24} color="#FFF" />
+        {/* ====================================================== */}
+        {/* ABA 3: MINHA TURMA & MURAL DA ESCOLA                   */}
+        {/* ====================================================== */}
+        {activeTab === "TURMA" && (
+          <View style={styles.sectionBlock}>
+            <View style={styles.sectionHeaderRow}>
+              <View>
+                <Text style={styles.tabPageTitle}>Minha Turma</Text>
+                <Text style={styles.tabPageSub}>
+                  Aulas dos professores, listas de exercícios e comunicados da escola.
+                </Text>
+              </View>
             </View>
-            <View style={styles.mainActionText}>
-              <Text style={styles.mainActionTitle}>Treino Aleatório</Text>
-              <Text style={styles.mainActionSub}>
-                Questões variadas de todas as áreas
-              </Text>
+
+            {/* Mural Institucional da Escola */}
+            <View style={{ marginBottom: 16 }}>
+              <SchoolMuralCard />
             </View>
-          </TouchableOpacity>
 
-          <View style={styles.row}>
-            <TouchableOpacity
-              style={[
-                styles.secondaryActionCard,
-                { backgroundColor: "#CE82FF", shadowColor: "#CE82FF" },
-              ]}
-              activeOpacity={0.8}
-              onPress={() => router.push("/trails" as Href)}
-            >
-              <FontAwesome5
-                name="route"
-                size={20}
-                color="#FFF"
-                style={{ marginBottom: 8 }}
-              />
-              <Text style={styles.secondaryActionTitle}>
-                Trilhas de{"\n"}Questões
-              </Text>
-            </TouchableOpacity>
+            {/* Ação: Criar Turma (Professor) ou Entrar com Código (Aluno) */}
+            <View style={{ marginBottom: 14 }}>
+              {user?.role === "TEACHER" ? (
+                <CreateRoomButton />
+              ) : (
+                <TouchableOpacity
+                  style={styles.joinCodeTriggerBtn}
+                  onPress={() => setShowJoinModal((prev) => !prev)}
+                  activeOpacity={0.85}
+                >
+                  <FontAwesome5 name="key" size={13} color="#0284C7" />
+                  <Text style={styles.joinCodeTriggerText}>
+                    Entrar em uma Turma com Código
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
 
-            <TouchableOpacity
-              style={[
-                styles.secondaryActionCard,
-                { backgroundColor: "#FF9600", shadowColor: "#FF9600" },
-              ]}
-              activeOpacity={0.8}
-              onPress={() => router.push("/challenge" as Href)}
-            >
-              <FontAwesome5
-                name="bolt"
-                size={20}
-                color="#FFF"
-                style={{ marginBottom: 8 }}
-              />
-              <Text style={styles.secondaryActionTitle}>
-                Desafio{"\n"}Diário
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* 4. DISCIPLINAS DO ENEM */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Matérias do ENEM</Text>
-          <View style={styles.gridContainer}>
-            {filteredSubjects.map((subject, index) => (
-              <TouchableOpacity
-                key={index}
-                style={[styles.gridItem, { borderLeftColor: subject.color }]}
-                activeOpacity={0.7}
-                onPress={() => router.push(`/subject/${subject.id}` as any)}
-              >
-                <FontAwesome5
-                  name={subject.icon}
-                  size={16}
-                  color={subject.color}
-                  style={{ marginRight: 10 }}
+            {showJoinModal && (
+              <View style={styles.joinBox}>
+                <TextInput
+                  style={styles.joinInput}
+                  placeholder="Ex.: ENEM-2026"
+                  placeholderTextColor="#94A3B8"
+                  value={joinCodeInput}
+                  onChangeText={setJoinCodeInput}
+                  autoCapitalize="characters"
                 />
-                <Text style={styles.gridItemText}>{subject.name}</Text>
+                <TouchableOpacity
+                  style={styles.joinConfirmBtn}
+                  onPress={handleJoinClassroom}
+                  disabled={isJoining}
+                >
+                  {isJoining ? (
+                    <ActivityIndicator size="small" color="#FFF" />
+                  ) : (
+                    <Text style={styles.joinConfirmBtnText}>Entrar</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
+            {joinError && <Text style={styles.joinErrorText}>{joinError}</Text>}
+
+            {/* Lista de Turmas */}
+            {classrooms.length === 0 ? (
+              <View style={styles.emptyClassroomCard}>
+                <FontAwesome5
+                  name="chalkboard"
+                  size={28}
+                  color="#94A3B8"
+                  style={{ marginBottom: 10 }}
+                />
+                <Text style={styles.emptyClassroomTitle}>
+                  Nenhuma turma vinculada ainda
+                </Text>
+                <Text style={styles.emptyClassroomSub}>
+                  {user?.role === "TEACHER"
+                    ? "Crie sua primeira turma acima para compartilhar aulas e listas."
+                    : "Peça o código da turma ao seu professor para acompanhar listas e materiais."}
+                </Text>
+              </View>
+            ) : (
+              <View style={{ gap: 10, marginBottom: 18 }}>
+                {classrooms.map((room) => (
+                  <TouchableOpacity
+                    key={room.id}
+                    style={styles.classroomCard}
+                    activeOpacity={0.85}
+                    onPress={() => router.push(`/classes/${room.id}` as any)}
+                  >
+                    <View
+                      style={[
+                        styles.classroomIconBox,
+                        { backgroundColor: `${room.themeColor || "#16A34A"}18` },
+                      ]}
+                    >
+                      <FontAwesome5
+                        name="graduation-cap"
+                        size={18}
+                        color={room.themeColor || "#16A34A"}
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.classroomName}>{room.name}</Text>
+                      <Text style={styles.classroomMeta}>
+                        Prof. {room.teacherName || "Docente"} • Código: {room.code}
+                      </Text>
+                    </View>
+                    <FontAwesome5
+                      name="chevron-right"
+                      size={13}
+                      color="#94A3B8"
+                    />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {/* Atalhos rápidos da Turma */}
+            <View style={styles.quickGrid}>
+              <TouchableOpacity
+                style={styles.quickGridCard}
+                onPress={() => router.push("/classes/tasks" as any)}
+              >
+                <View style={[styles.quickGridIcon, { backgroundColor: "#E0F2FE" }]}>
+                  <FontAwesome5 name="clipboard-list" size={17} color="#0284C7" />
+                </View>
+                <Text style={styles.quickGridTitle}>Tarefas & Listas</Text>
+                <Text style={styles.quickGridSub}>
+                  {pendingTasks} pendente(s)
+                </Text>
               </TouchableOpacity>
-            ))}
+
+              <TouchableOpacity
+                style={styles.quickGridCard}
+                onPress={() => router.push("/classes/materials" as any)}
+              >
+                <View style={[styles.quickGridIcon, { backgroundColor: "#F3E8FF" }]}>
+                  <FontAwesome5 name="folder-open" size={17} color="#7C3AED" />
+                </View>
+                <Text style={styles.quickGridTitle}>Materiais</Text>
+                <Text style={styles.quickGridSub}>PDFs e videoaulas</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-
-        {/* 5. ANÁLISE DE DESEMPENHO (NOVO FORMATO LISTA) */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Desempenho e Evolução</Text>
-
-          <TouchableOpacity
-            style={[styles.analysisCard, { borderLeftColor: "#1CB0F6" }]}
-            activeOpacity={0.7}
-            onPress={() => router.push("/stats" as Href)}
-          >
-            <View style={[styles.analysisIcon, { backgroundColor: "#E0F2FE" }]}>
-              <FontAwesome5 name="chart-line" size={20} color="#1CB0F6" />
-            </View>
-            <View style={styles.analysisTextContent}>
-              <Text style={styles.analysisTitle}>Estatísticas de Acertos</Text>
-              <Text style={styles.analysisSub}>
-                Taxa de precisão geral e média de tempo (ex: 2m15s) para cada
-                acerto.
-              </Text>
-            </View>
-            <FontAwesome5 name="chevron-right" size={16} color="#E2E8F0" />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.analysisCard, { borderLeftColor: "#FF4B4B" }]}
-            activeOpacity={0.7}
-            onPress={() => router.push("/stats/errors")}
-          >
-            <View style={[styles.analysisIcon, { backgroundColor: "#FFE4E6" }]}>
-              <FontAwesome5 name="microscope" size={20} color="#FF4B4B" />
-            </View>
-            <View style={styles.analysisTextContent}>
-              <Text style={styles.analysisTitle}>Raio-X de Erros</Text>
-              <Text style={styles.analysisSub}>
-                Veja sua taxa de erro, o tempo médio e os assuntos com mais
-                falhas por matéria.
-              </Text>
-            </View>
-            <FontAwesome5 name="chevron-right" size={16} color="#E2E8F0" />
-          </TouchableOpacity>
-        </View>
-
-        {/* 6. CADERNO DE ANOTAÇÕES */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Meu Caderno</Text>
-          <View style={styles.row}>
-            {/* Vai para o Caderno na aba de Questões */}
-            <TouchableOpacity
-              style={[styles.card, styles.notesCard]}
-              activeOpacity={0.7}
-              onPress={() => router.push("/notes?tab=questions" as any)}
-            >
-              <FontAwesome5 name="bookmark" size={24} color="#F1C40F" />
-              <Text style={styles.cardTitle}>Por Questão</Text>
-              <Text style={styles.cardSub}>
-                Macetes salvos direto na resolução.
-              </Text>
-            </TouchableOpacity>
-
-            {/* Vai para o Caderno na aba de Resumos Gerais */}
-            <TouchableOpacity
-              style={[styles.card, styles.notesCard]}
-              activeOpacity={0.7}
-              onPress={() => router.push("/notes?tab=general" as any)}
-            >
-              <FontAwesome5 name="book-open" size={24} color="#8CA0B3" />
-              <Text style={styles.cardTitle}>Gerais</Text>
-              <Text style={styles.cardSub}>
-                Resumos teóricos e fórmulas exatas.
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+        )}
       </ScrollView>
+
+      {/* ======================================================== */}
+      {/* BARRA DE NAVEGAÇÃO INFERIOR (PADRÃO DE MERCADO)          */}
+      {/* ======================================================== */}
+      <View style={styles.bottomTabBar}>
+        <TouchableOpacity
+          style={styles.bottomTabItem}
+          onPress={() => setActiveTab("INICIO")}
+          activeOpacity={0.8}
+        >
+          <FontAwesome5
+            name="home"
+            size={18}
+            color={activeTab === "INICIO" ? "#0284C7" : "#94A3B8"}
+          />
+          <Text
+            style={[
+              styles.bottomTabLabel,
+              activeTab === "INICIO" && styles.bottomTabLabelActive,
+            ]}
+          >
+            Início
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.bottomTabItem}
+          onPress={() => setActiveTab("MATERIAS")}
+          activeOpacity={0.8}
+        >
+          <FontAwesome5
+            name="book-open"
+            size={18}
+            color={activeTab === "MATERIAS" ? "#0284C7" : "#94A3B8"}
+          />
+          <Text
+            style={[
+              styles.bottomTabLabel,
+              activeTab === "MATERIAS" && styles.bottomTabLabelActive,
+            ]}
+          >
+            Matérias
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.bottomTabItem}
+          onPress={() => setActiveTab("TURMA")}
+          activeOpacity={0.8}
+        >
+          <FontAwesome5
+            name="graduation-cap"
+            size={18}
+            color={activeTab === "TURMA" ? "#0284C7" : "#94A3B8"}
+          />
+          <Text
+            style={[
+              styles.bottomTabLabel,
+              activeTab === "TURMA" && styles.bottomTabLabelActive,
+            ]}
+          >
+            Turma
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.bottomTabItem}
+          onPress={() => router.push("/chat" as any)}
+          activeOpacity={0.8}
+        >
+          <FontAwesome5 name="comments" size={18} color="#94A3B8" />
+          <Text style={styles.bottomTabLabel}>Chats</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.bottomTabItem}
+          onPress={() => router.push("/profile" as any)}
+          activeOpacity={0.8}
+        >
+          <FontAwesome5 name="user-circle" size={18} color="#94A3B8" />
+          <Text style={styles.bottomTabLabel}>Perfil</Text>
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F7F9FC" },
+  container: { flex: 1, backgroundColor: "#F8FAFC" },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    backgroundColor: "#FFF",
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    backgroundColor: "#FFFFFF",
     borderBottomWidth: 1,
     borderBottomColor: "#E2E8F0",
   },
-  headerLeft: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "flex-start",
-  },
-  headerNameLogo: {
-    width: 115,
-    height: 44,
-  },
-  headerRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
+  headerLeft: { flexDirection: "row", alignItems: "center" },
+  headerNameLogo: { width: 132, height: 34 },
+  headerRight: { flexDirection: "row", alignItems: "center", gap: 10 },
   headerIconButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#F8FAFC",
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    justifyContent: "center",
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "#F1F5F9",
     alignItems: "center",
+    justifyContent: "center",
     position: "relative",
   },
-  headerIconButtonActive: {
-    backgroundColor: "#E0F2FE",
-    borderColor: "#BAE6FD",
-  },
+  headerIconButtonActive: { backgroundColor: "#E0F2FE" },
   notificationDot: {
     position: "absolute",
     top: 8,
@@ -774,459 +948,440 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: "#FF4B4B",
+    backgroundColor: "#EF4444",
     borderWidth: 1.5,
-    borderColor: "#FFF",
+    borderColor: "#FFFFFF",
   },
   profileButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     overflow: "hidden",
     borderWidth: 2,
-    borderColor: "#1CB0F6",
+    borderColor: "#0284C7",
   },
   headerAvatarImage: { width: "100%", height: "100%" },
   headerAvatarPlaceholder: {
-    width: "100%",
-    height: "100%",
-    backgroundColor: "#1CB0F6",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-
-  searchBarContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFF",
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#E2E8F0",
-    gap: 10,
-  },
-  searchInput: {
     flex: 1,
-    fontSize: 14,
-    color: "#2C3A47",
-    paddingVertical: 4,
+    backgroundColor: "#0284C7",
+    alignItems: "center",
+    justifyContent: "center",
   },
 
-  notificationsDropdown: {
-    backgroundColor: "#FFF",
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#E2E8F0",
-    gap: 8,
+  scrollContent: {
+    padding: 18,
+    paddingBottom: 32,
+    maxWidth: 900,
+    width: "100%",
+    alignSelf: "center",
   },
-  notificationsTitle: {
+
+  /* HERO BANNER */
+  heroBanner: {
+    backgroundColor: "#0284C7",
+    borderRadius: 22,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: "#0284C7",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.22,
+    shadowRadius: 16,
+    elevation: 6,
+  },
+  heroTopRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 10,
+    marginBottom: 8,
+  },
+  greetingText: {
     fontSize: 13,
-    fontWeight: "bold",
-    color: "#8CA0B3",
-    textTransform: "uppercase",
+    fontWeight: "700",
+    color: "#BAE6FD",
     marginBottom: 2,
   },
-  notificationItem: {
+  heroTitle: {
+    fontSize: 20,
+    fontWeight: "900",
+    color: "#FFFFFF",
+    lineHeight: 26,
+  },
+  streakPill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    backgroundColor: "#F8FAFC",
-    padding: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
+    gap: 5,
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: 16,
   },
-  notificationText: {
-    flex: 1,
+  streakPillText: {
     fontSize: 13,
-    color: "#2C3A47",
+    fontWeight: "900",
+    color: "#EA580C",
   },
-
-  scrollContent: { padding: 20, paddingBottom: 40 },
-
-  // Seção Lado a Lado: Ofensiva + Mural
-  topOverviewRow: {
+  heroSubtitle: {
+    fontSize: 13,
+    color: "#E0F2FE",
+    marginBottom: 16,
+  },
+  heroActionsRow: {
     flexDirection: "row",
-    gap: 12,
-    marginBottom: 28,
-    alignItems: "stretch",
+    gap: 10,
   },
-  muralCard: {
-    flex: 1,
-    backgroundColor: "#FFF",
-    padding: 14,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    justifyContent: "space-between",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  muralHeader: {
+  heroPrimaryBtn: {
+    flex: 1.4,
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#FFFFFF",
+    paddingVertical: 12,
+    borderRadius: 14,
+  },
+  heroPrimaryBtnText: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#0284C7",
+  },
+  heroSecondaryBtn: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.18)",
+    paddingVertical: 12,
+    borderRadius: 14,
+  },
+  heroSecondaryBtnText: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#FFFFFF",
+  },
+
+  b2bCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 16,
+  },
+  b2bIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  b2bTitle: { fontSize: 14, fontWeight: "800" },
+  b2bSub: { fontSize: 12, color: "#64748B", marginTop: 1 },
+
+  sectionBlock: { marginBottom: 18 },
+  sectionHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 10,
   },
-  muralTitle: {
-    fontSize: 15,
-    fontWeight: "bold",
-    color: "#2C3A47",
-  },
-  muralList: {
-    gap: 8,
-  },
-  muralItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: "#F8FAFC",
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#F1F5F9",
-  },
-  muralBadgeIcon: {
-    width: 26,
-    height: 26,
-    borderRadius: 8,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  muralItemTexts: {
-    flex: 1,
-  },
-  muralItemValue: {
-    fontSize: 12,
-    fontWeight: "bold",
-    color: "#2C3A47",
-  },
-  muralItemLabel: {
-    fontSize: 10,
-    color: "#8CA0B3",
-  },
-
-  section: { marginBottom: 28 },
-  sectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
-  },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#2C3A47",
-    marginBottom: 12,
-  },
-
-  mainActionCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 20,
-    borderRadius: 20,
-    marginBottom: 12,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  mainActionIcon: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: "rgba(255,255,255,0.2)",
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 16,
-  },
-  mainActionText: { flex: 1 },
-  mainActionTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#FFF",
-    marginBottom: 4,
-  },
-  mainActionSub: { fontSize: 13, color: "rgba(255,255,255,0.9)" },
-
-  secondaryActionCard: {
-    flex: 1,
-    padding: 16,
-    borderRadius: 20,
-    alignItems: "flex-start",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  secondaryActionTitle: {
     fontSize: 16,
-    fontWeight: "bold",
-    color: "#FFF",
-    lineHeight: 22,
+    fontWeight: "800",
+    color: "#0F172A",
+    marginBottom: 10,
+  },
+  sectionLink: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#0284C7",
+    marginBottom: 10,
   },
 
-  row: { flexDirection: "row", gap: 12 },
+  summaryRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  summaryMiniCard: {
+    flex: 1,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 14,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  summaryIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 6,
+  },
+  summaryValue: {
+    fontSize: 18,
+    fontWeight: "900",
+    color: "#0F172A",
+  },
+  summaryLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#64748B",
+    marginTop: 1,
+  },
 
-  gridContainer: {
+  quickGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
+    gap: 10,
   },
-  gridItem: {
-    width: "48%",
-    backgroundColor: "#FFF",
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 12,
+  quickGridCard: {
+    width: "48.3%",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+    padding: 15,
     borderWidth: 1,
     borderColor: "#E2E8F0",
-    borderLeftWidth: 4,
   },
-  gridItemText: { fontSize: 14, fontWeight: "bold", color: "#4B5563", flex: 1 },
+  quickGridIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 10,
+  },
+  quickGridTitle: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#0F172A",
+    marginBottom: 2,
+  },
+  quickGridSub: {
+    fontSize: 11,
+    color: "#64748B",
+  },
 
-  // Estilos da Seção de Análise
-  analysisCard: {
+  chatCompactCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFF",
-    padding: 16,
+    gap: 12,
+    backgroundColor: "#FFFFFF",
     borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#BAE6FD",
+  },
+  chatCompactIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 13,
+    backgroundColor: "#E0F2FE",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  chatCompactTitle: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#0F172A",
+  },
+  chatCompactSub: {
+    fontSize: 11,
+    color: "#64748B",
+    marginTop: 1,
+  },
+
+  /* ABA MATÉRIAS */
+  tabPageTitle: {
+    fontSize: 22,
+    fontWeight: "900",
+    color: "#0F172A",
+    marginBottom: 4,
+  },
+  tabPageSub: {
+    fontSize: 13,
+    color: "#64748B",
+    marginBottom: 14,
+    lineHeight: 19,
+  },
+  areaChipsRow: {
+    gap: 8,
+    paddingBottom: 14,
+  },
+  areaChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+  },
+  areaChipActive: {
+    backgroundColor: "#0284C7",
+    borderColor: "#0284C7",
+  },
+  areaChipText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#475569",
+  },
+  areaChipTextActive: {
+    color: "#FFFFFF",
+  },
+  subjectsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  subjectCard: {
+    width: "48.3%",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+    padding: 16,
     borderWidth: 1,
     borderColor: "#E2E8F0",
-    borderLeftWidth: 6,
-    marginBottom: 12,
   },
-  analysisIcon: {
+  subjectIconCircle: {
     width: 44,
     height: 44,
-    borderRadius: 12,
+    borderRadius: 14,
+    alignItems: "center",
     justifyContent: "center",
-    alignItems: "center",
-    marginRight: 16,
+    marginBottom: 10,
   },
-  analysisTextContent: { flex: 1, paddingRight: 10 },
-  analysisTitle: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: "#2C3A47",
-    marginBottom: 4,
-  },
-  analysisSub: { fontSize: 13, color: "#8CA0B3", lineHeight: 18 },
-
-  // Estilos da Seção de Anotações
-  card: {
-    flex: 1,
-    backgroundColor: "#FFF",
-    padding: 16,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    alignItems: "flex-start",
-  },
-  notesCard: { backgroundColor: "#F8FAFC" },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: "#2C3A47",
-    marginTop: 12,
-    marginBottom: 4,
-  },
-  cardSub: { fontSize: 12, color: "#8CA0B3", lineHeight: 16 },
-
-  // SALA DE AULA
-  addClassText: { fontSize: 14, fontWeight: "bold", color: "#1CB0F6" },
-
-  // Estilos do Modal / Entrada de Código
-  joinCodeBox: {
-    backgroundColor: "#FFF",
-    padding: 16,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    marginBottom: 14,
-    gap: 8,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  joinCodeHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  joinCodeTitle: {
-    fontSize: 15,
-    fontWeight: "bold",
-    color: "#2C3A47",
-  },
-  joinCodeSub: {
-    fontSize: 12,
-    color: "#8CA0B3",
-    lineHeight: 16,
-  },
-  joinCodeInputRow: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 4,
-  },
-  joinCodeInput: {
-    flex: 1,
-    backgroundColor: "#F8FAFC",
-    borderWidth: 1.5,
-    borderColor: "#E2E8F0",
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+  subjectCardTitle: {
     fontSize: 14,
-    fontWeight: "bold",
-    color: "#2C3A47",
-    letterSpacing: 1,
+    fontWeight: "800",
+    color: "#0F172A",
+    marginBottom: 3,
   },
-  joinCodeInputError: {
-    borderColor: "#FF4B4B",
-    backgroundColor: "#FFF5F5",
-  },
-  joinCodeButton: {
-    backgroundColor: "#1CB0F6",
-    paddingHorizontal: 18,
-    borderRadius: 12,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  joinCodeButtonText: {
-    color: "#FFF",
-    fontWeight: "bold",
-    fontSize: 14,
-  },
-  joinErrorRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: 2,
-  },
-  joinErrorText: {
-    fontSize: 12,
-    color: "#FF4B4B",
+  subjectCardMeta: {
+    fontSize: 11,
+    color: "#64748B",
     fontWeight: "600",
   },
 
-  classroomsScroll: {
-    gap: 10,
-    paddingBottom: 12,
-  },
-  classroomBadgeCard: {
+  /* ABA TURMA */
+  joinCodeTriggerBtn: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFF",
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    borderLeftWidth: 4,
-    width: 220,
-    gap: 10,
-  },
-  classroomBadgeIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
     justifyContent: "center",
-    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#E0F2FE",
+    paddingVertical: 12,
+    borderRadius: 14,
   },
-  classroomBadgeName: {
+  joinCodeTriggerText: {
     fontSize: 13,
-    fontWeight: "bold",
-    color: "#2C3A47",
+    fontWeight: "800",
+    color: "#0284C7",
   },
-  classroomBadgeSub: {
-    fontSize: 11,
-    color: "#8CA0B3",
+  joinBox: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 10,
+  },
+  joinInput: {
+    flex: 1,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#0F172A",
+  },
+  joinConfirmBtn: {
+    backgroundColor: "#0284C7",
+    paddingHorizontal: 18,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  joinConfirmBtnText: { color: "#FFFFFF", fontWeight: "800", fontSize: 13 },
+  joinErrorText: {
+    fontSize: 12,
+    color: "#DC2626",
+    marginBottom: 10,
+    fontWeight: "600",
   },
   emptyClassroomCard: {
-    flexDirection: "row",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+    padding: 24,
     alignItems: "center",
-    backgroundColor: "#F8FAFC",
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 12,
     borderWidth: 1,
     borderColor: "#E2E8F0",
-    marginBottom: 12,
-    gap: 10,
+    marginBottom: 16,
   },
-  emptyClassroomText: {
-    flex: 1,
+  emptyClassroomTitle: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#0F172A",
+    marginBottom: 4,
+  },
+  emptyClassroomSub: {
     fontSize: 12,
     color: "#64748B",
+    textAlign: "center",
     lineHeight: 18,
   },
-  adminBanner: {
+  classroomCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FAF5FF",
-    borderWidth: 1,
-    borderColor: "#E9D5FF",
+    gap: 12,
+    backgroundColor: "#FFFFFF",
     borderRadius: 16,
-    padding: 16,
-    gap: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
   },
-  adminBannerIcon: {
+  classroomIconBox: {
     width: 44,
     height: 44,
-    borderRadius: 22,
-    backgroundColor: "#F3E8FF",
-    justifyContent: "center",
+    borderRadius: 14,
     alignItems: "center",
+    justifyContent: "center",
   },
-  adminBannerTitle: {
+  classroomName: {
     fontSize: 15,
-    fontWeight: "700",
-    color: "#581C87",
-    marginBottom: 2,
+    fontWeight: "800",
+    color: "#0F172A",
   },
-  adminBannerSubtitle: {
+  classroomMeta: {
     fontSize: 12,
-    color: "#7E22CE",
-    lineHeight: 16,
+    color: "#64748B",
+    marginTop: 2,
   },
-  schoolBanner: {
+
+  /* BOTTOM TAB BAR */
+  bottomTabBar: {
     flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#F0F9FF",
-    borderWidth: 1,
-    borderColor: "#BAE6FD",
-    borderRadius: 16,
-    padding: 16,
-    gap: 14,
+    backgroundColor: "#FFFFFF",
+    borderTopWidth: 1,
+    borderTopColor: "#E2E8F0",
+    paddingTop: 8,
+    paddingBottom: Platform.OS === "ios" ? 18 : 10,
+    paddingHorizontal: 6,
   },
-  schoolBannerIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "#E0F2FE",
+  bottomTabItem: {
+    flex: 1,
+    alignItems: "center",
     justifyContent: "center",
-    alignItems: "center",
+    gap: 4,
   },
-  schoolBannerTitle: {
-    fontSize: 15,
+  bottomTabLabel: {
+    fontSize: 11,
     fontWeight: "700",
-    color: "#0369A1",
-    marginBottom: 2,
+    color: "#94A3B8",
   },
-  schoolBannerSubtitle: {
-    fontSize: 12,
+  bottomTabLabelActive: {
     color: "#0284C7",
-    lineHeight: 16,
+    fontWeight: "800",
   },
 });

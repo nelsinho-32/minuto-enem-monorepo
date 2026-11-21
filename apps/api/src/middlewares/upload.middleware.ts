@@ -99,3 +99,105 @@ export function uploadPdfMiddleware(
   });
 }
 
+/**
+ * Validador de formato para fotos de redação (JPG, PNG, WEBP, HEIC)
+ */
+const essayImageFileFilter: multer.Options["fileFilter"] = (
+  _req: Request,
+  file: Express.Multer.File,
+  callback: multer.FileFilterCallback
+) => {
+  const isImageMime =
+    file.mimetype.startsWith("image/") ||
+    file.mimetype === "application/octet-stream";
+
+  const lowerName = file.originalname.toLowerCase();
+  const isImageExt =
+    lowerName.endsWith(".jpg") ||
+    lowerName.endsWith(".jpeg") ||
+    lowerName.endsWith(".png") ||
+    lowerName.endsWith(".webp") ||
+    lowerName.endsWith(".heic") ||
+    lowerName.endsWith(".heif");
+
+  if (isImageMime || isImageExt) {
+    callback(null, true);
+  } else {
+    callback(
+      new AppError(
+        "Formato de imagem inválido. Envie uma foto da redação em formato JPG, PNG, WEBP ou HEIC.",
+        400
+      )
+    );
+  }
+};
+
+const uploadEssayMulter = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 15 * 1024 * 1024, // 15MB
+  },
+  fileFilter: essayImageFileFilter,
+});
+
+const uploadEssayFields = uploadEssayMulter.fields([
+  { name: "file", maxCount: 1 },
+  { name: "image", maxCount: 1 },
+  { name: "photo", maxCount: 1 },
+  { name: "essay", maxCount: 1 },
+]);
+
+/**
+ * Middleware para upload de foto da folha de redação (Oficina Nota 1000).
+ * Aceita a imagem nos campos 'file', 'image', 'photo' ou 'essay'.
+ */
+export function uploadEssayImageMiddleware(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void {
+  uploadEssayFields(req, res, (err: any) => {
+    if (err) {
+      if (err instanceof multer.MulterError) {
+        if (err.code === "LIMIT_FILE_SIZE") {
+          return next(
+            new AppError(
+              "A foto da redação excede o limite máximo permitido de 15MB.",
+              400
+            )
+          );
+        }
+        return next(
+          new AppError(`Erro no processamento da imagem: ${err.message}`, 400)
+        );
+      }
+      return next(err);
+    }
+
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+    if (files) {
+      if (files["file"] && files["file"].length > 0) {
+        req.file = files["file"][0];
+      } else if (files["image"] && files["image"].length > 0) {
+        req.file = files["image"][0];
+      } else if (files["photo"] && files["photo"].length > 0) {
+        req.file = files["photo"][0];
+      } else if (files["essay"] && files["essay"].length > 0) {
+        req.file = files["essay"][0];
+      }
+    }
+
+    // Se a imagem já foi enviada via URL em req.body.imageUrl, permite continuar
+    if (!req.file && (!req.body?.imageUrl || typeof req.body.imageUrl !== "string")) {
+      return next(
+        new AppError(
+          "Nenhuma imagem enviada. Anexe uma foto da redação nos campos 'file', 'image' ou envie a 'imageUrl'.",
+          400
+        )
+      );
+    }
+
+    next();
+  });
+}
+

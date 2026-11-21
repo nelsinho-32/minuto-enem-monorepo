@@ -18,30 +18,10 @@ const adapter = new PrismaPg(pool);
 export const basePrisma = new PrismaClient({ adapter });
 
 /**
- * Dispara o enfileiramento assíncrono no BullMQ (ou fallback não-bloqueante)
- * para gerar e gravar o embedding da questão via Google Gemini sem travar a requisição HTTP.
- */
-async function triggerAsyncQuestionEmbedding(questionId: string): Promise<void> {
-  try {
-    const { enqueueQuestionEmbedding } = await import(
-      "../queues/background.queue"
-    );
-    await enqueueQuestionEmbedding(questionId);
-  } catch (error) {
-    console.warn(
-      `[Prisma Embedding Extension] Falha ao enfileirar embedding da questão ${questionId}:`,
-      error instanceof Error ? error.message : error
-    );
-  }
-}
-
-/**
- * Prisma Extension (Middleware moderno do Prisma):
- * Dispara automaticamente a fila de geração de embedding via Google Gemini (BullMQ)
- * sempre que uma questão for criada (`create`), atualizada (`update`) ou sofrer `upsert`.
+ * Prisma Extension para monitoramento de queries lentas e erros via Sentry.
  */
 export const prisma = basePrisma.$extends({
-  name: "sentry-slow-query-and-embedding",
+  name: "sentry-slow-query-monitor",
   query: {
     $allModels: {
       async $allOperations({ model, operation, args, query }) {
@@ -50,7 +30,6 @@ export const prisma = basePrisma.$extends({
           const result = await query(args);
           const duration = Date.now() - start;
 
-          // Se a query levar mais de 500ms, emite breadcrumb e alerta para monitoramento
           if (duration >= 500) {
             Sentry.addBreadcrumb({
               category: "db.prisma.slow_query",
@@ -82,29 +61,6 @@ export const prisma = basePrisma.$extends({
           });
           throw error;
         }
-      },
-    },
-    question: {
-      async create({ args, query }) {
-        const result = await query(args);
-        if (result?.id) {
-          await triggerAsyncQuestionEmbedding(result.id);
-        }
-        return result;
-      },
-      async update({ args, query }) {
-        const result = await query(args);
-        if (result?.id) {
-          await triggerAsyncQuestionEmbedding(result.id);
-        }
-        return result;
-      },
-      async upsert({ args, query }) {
-        const result = await query(args);
-        if (result?.id) {
-          await triggerAsyncQuestionEmbedding(result.id);
-        }
-        return result;
       },
     },
   },

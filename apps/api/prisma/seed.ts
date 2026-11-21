@@ -15,6 +15,8 @@ import { questionService, slugifyText } from "../src/services/question.service";
 interface LessonData {
   title: string;
   content: string;
+  youtubeUrl?: string;
+  videoTitle?: string;
   videos?: string[];
   references?: string[];
 }
@@ -55,6 +57,7 @@ const SUBJECT_TO_AREA: Record<string, string> = {
   matematica: "Matemática",
   "lingua-portuguesa": "Linguagens e Códigos",
   literatura: "Linguagens e Códigos",
+  redacao: "Linguagens e Códigos",
   artes: "Linguagens e Códigos",
   "educacao-fisica": "Linguagens e Códigos",
   "ingles-ou-espanhou": "Linguagens e Códigos",
@@ -457,6 +460,7 @@ async function main() {
             where: { id: existingLesson.id },
             data: {
               content: cleanContent,
+              youtubeUrl: lesson.youtubeUrl || null,
               videos: lesson.videos || [],
               references: lesson.references || [],
               topicId: topicRecord.id,
@@ -467,6 +471,7 @@ async function main() {
             data: {
               title: cleanTitle,
               content: cleanContent,
+              youtubeUrl: lesson.youtubeUrl || null,
               videos: lesson.videos || [],
               references: lesson.references || [],
               subjectId: subjectRecord.id,
@@ -497,6 +502,52 @@ async function main() {
   const rawQuestions: RawQuestionData[] = JSON.parse(
     fs.readFileSync(questionsPath, "utf-8")
   );
+
+  // Importa também provas oficiais recentes do ENEM (2019 a 2023) presentes em questoes/enem-api/public
+  const enemApiDir = path.resolve(__dirname, "../../../questoes/enem-api/public");
+  const recentYears = [2019, 2020, 2021, 2022, 2023];
+  const letterToIdx: Record<string, number> = { A: 0, B: 1, C: 2, D: 3, E: 4 };
+
+  if (fs.existsSync(enemApiDir)) {
+    let addedFromExams = 0;
+    for (const yr of recentYears) {
+      const qRoot = path.join(enemApiDir, String(yr), "questions");
+      if (!fs.existsSync(qRoot)) continue;
+      const entries = fs.readdirSync(qRoot);
+      for (const entry of entries) {
+        const detailPath = path.join(qRoot, entry, "details.json");
+        if (!fs.existsSync(detailPath)) continue;
+        try {
+          const item = JSON.parse(fs.readFileSync(detailPath, "utf-8"));
+          const correctIdx = letterToIdx[String(item.correctAlternative || "").toUpperCase()];
+          if (correctIdx === undefined) continue;
+          const alts = Array.isArray(item.alternatives) ? item.alternatives : [];
+          if (alts.length !== 5) continue;
+          const optionTexts = alts.map((a: any) => String(a.text || "").trim());
+          if (optionTexts.some((t: string) => !t)) continue;
+
+          const ctx = String(item.context || "").replace(/!\[.*?\]\(.*?\)/g, "").trim();
+          const intro = String(item.alternativesIntroduction || "").trim();
+          const fullText = [ctx, intro].filter(Boolean).join("\n\n").trim();
+          if (fullText.length < 25) continue;
+
+          rawQuestions.push({
+            year: yr,
+            area: String(item.discipline || "linguagens"),
+            text: fullText,
+            options: optionTexts,
+            correctAnswer: correctIdx,
+            explanation: `Questão oficial do ENEM ${yr} (${item.title || ""}). Gabarito oficial: alternativa ${item.correctAlternative}.`,
+            errorRate: 48.0,
+          });
+          addedFromExams++;
+        } catch {
+          // Ignora questão malformada
+        }
+      }
+    }
+    console.log(`📚 +${addedFromExams} questões oficiais do ENEM (2019–2023) adicionadas ao lote!`);
+  }
 
   console.log(`📄 Total de questões a processar: ${rawQuestions.length}`);
 

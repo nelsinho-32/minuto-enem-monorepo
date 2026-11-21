@@ -730,14 +730,14 @@ export class TaskService {
       | "MANUAL_SELECTION"
       | "RANDOM_BY_TOPIC"
       | "CUSTOM_TEACHER_QUESTIONS"
-      | "AI_GENERATED" = "MANUAL_SELECTION";
+      | "ESSAY" = "MANUAL_SELECTION";
 
     const modeUpper = (rawCreationMode || "").toString().trim().toUpperCase();
     if (
       modeUpper === "MANUAL_SELECTION" ||
       modeUpper === "RANDOM_BY_TOPIC" ||
       modeUpper === "CUSTOM_TEACHER_QUESTIONS" ||
-      modeUpper === "AI_GENERATED"
+      modeUpper === "ESSAY"
     ) {
       creationMode = modeUpper;
     } else if (customQuestionsList.length > 0) {

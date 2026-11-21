@@ -24,18 +24,20 @@ import { schoolRoutes } from "./routes/school.routes";
 import { classroomRoutes } from "./routes/classroom.routes";
 import { questionRoutes } from "./routes/question.routes";
 import { searchRoutes } from "./routes/search.routes";
-import { aiRoutes } from "./routes/ai.routes";
 import { noteRoutes } from "./routes/note.routes";
 import { trailRoutes } from "./routes/trail.routes";
 import { taskRoutes } from "./routes/task.routes";
 import { spacedRepetitionRoutes } from "./routes/spaced-repetition.routes";
+import { reviewRoutes } from "./routes/review.routes";
 import { syncRoutes } from "./routes/sync.routes";
 import { announcementRoutes } from "./routes/announcement.routes";
+import { essayRoutes } from "./routes/essay.routes";
+import { chatRoutes } from "./routes/chat.routes";
 import { streakService } from "./services/streak.service";
 import { questionService } from "./services/question.service";
 import { questionController } from "./controllers/question.controller";
 import { setupDuelWebSocket } from "./websocket/duel.socket";
-import { startBackgroundWorkers } from "./queues/background.queue";
+import { setupChatWebSocket } from "./websocket/chat.socket";
 
 // 1. Configuração do Servidor HTTP, Express, CORS e WebSocket (Socket.io)
 const app = express();
@@ -49,7 +51,7 @@ export const io = new SocketIOServer(httpServer, {
 });
 
 setupDuelWebSocket(io);
-startBackgroundWorkers();
+setupChatWebSocket(io);
 app.use(
   cors({
     origin: process.env.CORS_ORIGIN || "*",
@@ -67,6 +69,10 @@ const uploadsDir = path.resolve(process.cwd(), "uploads");
 const pdfsDir = path.join(uploadsDir, "pdfs");
 if (!fs.existsSync(pdfsDir)) {
   fs.mkdirSync(pdfsDir, { recursive: true });
+}
+const essaysDir = path.join(uploadsDir, "essays");
+if (!fs.existsSync(essaysDir)) {
+  fs.mkdirSync(essaysDir, { recursive: true });
 }
 app.use("/uploads", express.static(uploadsDir));
 app.use("/api/uploads", express.static(uploadsDir));
@@ -105,8 +111,6 @@ app.use("/questions", questionRoutes);
 app.use("/api/questions", questionRoutes);
 app.use("/search", searchRoutes);
 app.use("/api/search", searchRoutes);
-app.use("/ai", aiRoutes);
-app.use("/api/ai", aiRoutes);
 app.use("/notes", noteRoutes);
 app.use("/api/notes", noteRoutes);
 app.use("/trails", trailRoutes);
@@ -115,6 +119,8 @@ app.use("/tasks", taskRoutes);
 app.use("/api/tasks", taskRoutes);
 app.use("/spaced-repetition", spacedRepetitionRoutes);
 app.use("/api/spaced-repetition", spacedRepetitionRoutes);
+app.use("/reviews", reviewRoutes);
+app.use("/api/reviews", reviewRoutes);
 app.use("/flashcards", spacedRepetitionRoutes);
 app.use("/api/flashcards", spacedRepetitionRoutes);
 app.use("/streak", streakRoutes);
@@ -123,6 +129,10 @@ app.use("/sync", syncRoutes);
 app.use("/api/sync", syncRoutes);
 app.use("/announcements", announcementRoutes);
 app.use("/api/announcements", announcementRoutes);
+app.use("/essays", essayRoutes);
+app.use("/api/essays", essayRoutes);
+app.use("/chat", chatRoutes);
+app.use("/api/chat", chatRoutes);
 app.use("/stats", questionRoutes);
 app.use("/api/stats", questionRoutes);
 

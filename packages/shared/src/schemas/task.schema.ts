@@ -13,7 +13,7 @@ export const TaskCreationModeValues = [
   "MANUAL_SELECTION",
   "RANDOM_BY_TOPIC",
   "CUSTOM_TEACHER_QUESTIONS",
-  "AI_GENERATED",
+  "ESSAY",
 ] as const;
 
 export const TaskCreationModeSchema = z.enum(TaskCreationModeValues);
@@ -22,7 +22,7 @@ export const TaskCreationMode = {
   MANUAL_SELECTION: "MANUAL_SELECTION",
   RANDOM_BY_TOPIC: "RANDOM_BY_TOPIC",
   CUSTOM_TEACHER_QUESTIONS: "CUSTOM_TEACHER_QUESTIONS",
-  AI_GENERATED: "AI_GENERATED",
+  ESSAY: "ESSAY",
 } as const;
 
 export type TaskCreationMode = z.infer<typeof TaskCreationModeSchema>;

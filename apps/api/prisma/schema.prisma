@@ -71,6 +71,11 @@ model User {
   wonDuels           DuelMatch[]       @relation("DuelWinner")
   taskSubmissions    TaskSubmission[]
   announcements      Announcement[]
+  spacedRepetitions  SpacedRepetition[]
+  essaySubmissions   EssaySubmission[]
+  correctedEssays    EssaySubmission[] @relation("EssayCorrector")
+  chatRooms          ChatRoom[]        @relation("ChatRoomParticipants")
+  sentChatMessages   ChatMessage[]     @relation("SentChatMessages")
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @default(now()) @updatedAt
 
@@ -110,6 +115,7 @@ model Classroom {
   students  User[]   @relation("StudentClassrooms")
   tasks     Task[]
   lessons   Lesson[]
+  chatRoom  ChatRoom?
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
@@ -148,6 +154,7 @@ model Task {
   classroomId     String?
   classroom       Classroom?       @relation(fields: [classroomId], references: [id], onDelete: Cascade)
   submissions     TaskSubmission[]
+  essaySubmissions EssaySubmission[]
   attempts        QuestionAttempt[]
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @default(now()) @updatedAt
@@ -182,6 +189,36 @@ model TaskSubmission {
   @@index([taskId])
   @@index([studentId])
   @@index([status])
+  @@index([submittedAt])
+}
+
+model EssaySubmission {
+  id              String    @id @default(uuid())
+  taskId          String
+  task            Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  studentId       String
+  student         User      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  imageUrl        String    // URL da foto da folha de redação no storage
+  status          String    @default("PENDING") // "PENDING" | "CORRECTED"
+  competency1     Int?      // 0 a 200
+  competency2     Int?      // 0 a 200
+  competency3     Int?      // 0 a 200
+  competency4     Int?      // 0 a 200
+  competency5     Int?      // 0 a 200
+  finalScore      Int?      // 0 a 1000 (soma de c1 a c5 gerada automaticamente)
+  generalFeedback String?   @db.Text
+  correctedById   String?
+  correctedBy     User?     @relation("EssayCorrector", fields: [correctedById], references: [id], onDelete: SetNull)
+  correctedAt     DateTime?
+  submittedAt     DateTime  @default(now())
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @default(now()) @updatedAt
+
+  @@unique([taskId, studentId])
+  @@index([taskId])
+  @@index([studentId])
+  @@index([status])
+  @@index([correctedById])
   @@index([submittedAt])
 }
 
@@ -261,6 +298,7 @@ model Question {
   errorRate        Float?
   attempts         QuestionAttempt[]
   flashcardReviews FlashcardReview[]
+  spacedRepetitions SpacedRepetition[]
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @default(now()) @updatedAt
 
@@ -335,6 +373,7 @@ model Subject {
   questions Question[]
   trails    Trail[]
   tasks     Task[]
+  spacedRepetitions SpacedRepetition[]
   createdAt DateTime   @default(now())
   updatedAt DateTime   @default(now()) @updatedAt
 
@@ -408,6 +447,30 @@ model FlashcardReview {
   @@index([questionId])
 }
 
+model SpacedRepetition {
+  id             String    @id @default(uuid())
+  userId         String
+  questionId     String
+  subjectId      String?
+  interval       Int       @default(0) // Intervalo em dias
+  repetitions    Int       @default(0) // Contagem de repetições bem-sucedidas consecutivas
+  easinessFactor Float     @default(2.5) // Fator de facilidade SM-2 (padrão 2.5)
+  nextReviewDate DateTime  @default(now()) // Próxima data de revisão calculada pelo SM-2
+  lastReviewedAt DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  subject  Subject? @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, questionId])
+  @@index([userId, nextReviewDate])
+  @@index([questionId])
+  @@index([subjectId])
+  @@index([nextReviewDate])
+}
+
 model StreakLog {
   id             String   @id @default(uuid())
   userId         String
@@ -467,4 +530,43 @@ model DuelPlayer {
   @@index([duelMatchId])
   @@index([userId])
   @@index([score])
+}
+
+enum ChatRoomType {
+  GLOBAL
+  CLASSROOM
+  DIRECT
+}
+
+model ChatRoom {
+  id           String        @id @default(uuid())
+  name         String
+  type         ChatRoomType  @default(GLOBAL)
+  classroomId  String?       @unique
+  classroom    Classroom?    @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  directKey    String?       @unique
+  participants User[]        @relation("ChatRoomParticipants")
+  messages     ChatMessage[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @default(now()) @updatedAt
+
+  @@index([type])
+  @@index([classroomId])
+  @@index([updatedAt])
+}
+
+model ChatMessage {
+  id         String   @id @default(uuid())
+  roomId     String
+  room       ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  senderId   String
+  sender     User     @relation("SentChatMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  content    String   @db.Text
+  category   String   @default("GERAL") // "GERAL" | "DUVIDA" | "MACETE" | "QUESTAO"
+  subjectTag String?
+  likedByIds String[] @default([])
+  createdAt  DateTime @default(now())
+
+  @@index([roomId, createdAt])
+  @@index([senderId])
 }

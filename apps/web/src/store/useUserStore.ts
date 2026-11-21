@@ -41,7 +41,16 @@ interface UserState {
   iceFreezes: number;
   streakHistory: Record<string, 'COMPLETED' | 'FROZEN'>;
   avatar: string | null;
-  setAvatar: (url: string) => void;
+  avatarsByUser: Record<string, string>;
+  targetCourse: string;
+  targetScore: number;
+  bio: string;
+  setAvatar: (url: string | null) => void;
+  setProfileMeta: (meta: {
+    targetCourse?: string;
+    targetScore?: number;
+    bio?: string;
+  }) => void;
   addXp: (amount: number) => void;
   validateStreakOnLogin: () => Promise<void>;
   registerDailyPlay: () => Promise<void>;
@@ -133,10 +142,12 @@ export const useUserStore = create<UserState>()(
       setAuth: (token, user) => {
         setSentryUser(user);
         useClassroomStore.getState().setUserId(user.id);
+        const savedAvatar = get().avatarsByUser?.[user.id] || get().avatar || null;
         set({
           token,
           user,
           userId: user.id,
+          avatar: savedAvatar,
         });
         useClassroomStore.getState().fetchClassrooms();
       },
@@ -165,8 +176,32 @@ export const useUserStore = create<UserState>()(
       iceFreezes: initialDemo.iceFreezes,
       streakHistory: initialDemo.streakHistory,
       avatar: null,
+      avatarsByUser: {},
+      targetCourse: 'Medicina',
+      targetScore: 780,
+      bio: 'Focado na aprovação no ENEM!',
 
-      setAvatar: (url) => set({ avatar: url }),
+      setAvatar: (url) =>
+        set((state) => {
+          const uid = state.user?.id || state.userId || 'default';
+          const nextMap = { ...(state.avatarsByUser || {}) };
+          if (url) {
+            nextMap[uid] = url;
+          } else {
+            delete nextMap[uid];
+          }
+          return {
+            avatar: url,
+            avatarsByUser: nextMap,
+          };
+        }),
+
+      setProfileMeta: (meta) =>
+        set((state) => ({
+          targetCourse: meta.targetCourse ?? state.targetCourse,
+          targetScore: meta.targetScore ?? state.targetScore,
+          bio: meta.bio ?? state.bio,
+        })),
 
       addXp: (amount) => set((state) => ({ xp: state.xp + amount })),
 
@@ -365,6 +400,10 @@ export const useUserStore = create<UserState>()(
         iceFreezes: state.iceFreezes,
         streakHistory: state.streakHistory,
         avatar: state.avatar,
+        avatarsByUser: state.avatarsByUser,
+        targetCourse: state.targetCourse,
+        targetScore: state.targetScore,
+        bio: state.bio,
       }),
       onRehydrateStorage: () => (state) => {
         if (typeof window === 'undefined') return;

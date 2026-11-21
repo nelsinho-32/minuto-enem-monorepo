@@ -39,10 +39,20 @@ function extractHost(candidate?: string | null): string | null {
  * 4. Fallbacks para emulador Android (10.0.2.2) ou simulador iOS/Desktop (localhost).
  */
 function resolveBaseUrl(): string {
+  // 1. Navegador Web rodando localmente no computador (localhost / 127.0.0.1)
+  // Garante funcionamento instantâneo mesmo com firewall ou troca de Wi-Fi
+  if (
+    typeof window !== 'undefined' &&
+    (window.location?.hostname === 'localhost' ||
+      window.location?.hostname === '127.0.0.1')
+  ) {
+    return `http://localhost:${API_PORT}`;
+  }
+
   const envUrl = process.env.EXPO_PUBLIC_API_URL;
   if (envUrl) return envUrl.replace(/\/+$/, '');
 
-  // 1. Navegador Web (Safari no iPhone, Chrome no PC/Android, etc.)
+  // 2. Navegador Web (Safari no iPhone, Chrome no PC/Android, etc.)
   if (typeof window !== 'undefined' && window.location?.hostname) {
     const webHost = window.location.hostname;
     if (webHost && webHost !== 'localhost' && webHost !== '127.0.0.1') {

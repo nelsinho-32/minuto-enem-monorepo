@@ -1,18 +1,58 @@
 import { Request, Response } from "express";
+import jwt from "jsonwebtoken";
 import { searchService } from "../services/search.service";
 import { AppError } from "../errors/AppError";
+import { JwtPayloadData } from "../middlewares/auth.middleware";
+
+const JWT_SECRET = process.env.JWT_SECRET || "enem-super-secret-jwt-key-2026";
+
+function extractOptionalUserId(req: Request): string | undefined {
+  if (req.user?.id) return req.user.id;
+  if (req.query.userId && typeof req.query.userId === "string") {
+    return req.query.userId;
+  }
+  const authHeader = req.headers.authorization;
+  if (authHeader) {
+    const [, token] = authHeader.split(" ");
+    if (token) {
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET) as JwtPayloadData;
+        return decoded.sub;
+      } catch {
+        return undefined;
+      }
+    }
+  }
+  return undefined;
+}
 
 export class SearchController {
   /**
+   * GET /search/elastic?q=citologia&scope=ALL|SYSTEM|CLASSROOM|NOTES|QUESTIONS
+   * Busca elástica unificada com agrupamento e contadores por categoria.
+   */
+  async elasticSearch(req: Request, res: Response): Promise<Response> {
+    try {
+      const query = ((req.query.q || req.query.query || "") as string).trim();
+      const scope = ((req.query.scope || "ALL") as string).toUpperCase();
+      const limit = req.query.limit ? Number(req.query.limit) : 25;
+      const userId = extractOptionalUserId(req);
+
+      const result = await searchService.elasticSearch({
+        query,
+        userId,
+        scope,
+        limit,
+      });
+
+      return res.status(200).json(result);
+    } catch (error) {
+      return this.handleError(error, res);
+    }
+  }
+
+  /**
    * GET ou POST /api/search/questions
-   * Suporta parâmetros via Query String ou Body:
-   * - query / q: texto da busca semântica
-   * - year / ano: filtro exato de ano (ex: 2015)
-   * - subject / disciplina: filtro exato de disciplina (ex: "linguagens", "Geral", "matematica")
-   * - area: filtro exato de área do conhecimento (ex: "ciencias-humanas")
-   * - difficulty / dificuldade: "EASY" | "MEDIUM" | "HARD" | "FACIL" | "MEDIO" | "DIFICIL"
-   * - minSimilarity: limiar mínimo de similaridade cosseno (0 a 1)
-   * - limit, page: paginação
    */
   async searchQuestions(req: Request, res: Response): Promise<Response> {
     try {
@@ -57,23 +97,6 @@ export class SearchController {
     }
   }
 
-  /**
-   * POST /api/search/backfill
-   * Dispara a geração de embeddings via Gemini para questões antigas que estão com `embedding IS NULL`.
-   */
-  async backfillEmbeddings(req: Request, res: Response): Promise<Response> {
-    try {
-      const batchSize = req.body?.batchSize ?? req.query?.batchSize ?? 20;
-      const result = await searchService.backfillQuestionEmbeddings(
-        Number(batchSize)
-      );
-
-      return res.status(200).json(result);
-    } catch (error) {
-      return this.handleError(error, res);
-    }
-  }
-
   private handleError(error: unknown, res: Response): Response {
     if (error instanceof AppError) {
       return res.status(error.statusCode).json({
@@ -83,10 +106,9 @@ export class SearchController {
 
     console.error("[SearchController Error]:", error);
     return res.status(500).json({
-      error: "Erro interno ao executar busca de questões.",
+      error: "Erro interno ao executar busca.",
     });
   }
 }
 
 export const searchController = new SearchController();
-

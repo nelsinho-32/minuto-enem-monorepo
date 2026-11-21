@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { taskController } from "../controllers/task.controller";
+import { essayController } from "../controllers/essay.controller";
 import { auth } from "../middlewares/auth.middleware";
+import { uploadEssayImageMiddleware } from "../middlewares/upload.middleware";
 
 const taskRoutes = Router();
 
@@ -24,6 +26,14 @@ taskRoutes.get("/classroom/:classId", (req, res) =>
 // Conclusão/entrega de tarefa pelo aluno (POST /tasks/:taskId/submit)
 taskRoutes.post("/:taskId/submit", (req, res) =>
   taskController.submit(req, res)
+);
+
+// Envio de redação da Oficina Nota 1000 vinculado à tarefa
+taskRoutes.post("/:taskId/essay", uploadEssayImageMiddleware, (req, res) =>
+  essayController.submit(req, res)
+);
+taskRoutes.get("/:taskId/my-essay", (req, res) =>
+  essayController.getMyEssay(req, res)
 );
 
 // Busca, criação, edição e exclusão de tarefa

@@ -279,42 +279,6 @@ export class ClassroomController {
   }
 
   /**
-   * GET /api/classrooms/tasks/ai-suggestions
-   */
-  async getAiSuggestions(req: Request, res: Response): Promise<Response> {
-    try {
-      const classId = (req.query.classId || req.params.id) as string | undefined;
-      const subject = req.query.subject as string | undefined;
-
-      const suggestions = await classroomService.getAiTaskSuggestions(
-        classId,
-        subject
-      );
-
-      return res.status(200).json(suggestions);
-    } catch (error) {
-      return this.handleError(error, res);
-    }
-  }
-
-  /**
-   * POST /api/classrooms/tasks/approve-suggestion
-   */
-  async approveSuggestion(req: Request, res: Response): Promise<Response> {
-    try {
-      const teacherId = req.user?.id;
-      const createdTask = await classroomService.approveCopilotSuggestion(
-        req.body,
-        teacherId
-      );
-
-      return res.status(201).json(createdTask);
-    } catch (error) {
-      return this.handleError(error, res);
-    }
-  }
-
-  /**
    * POST /api/classrooms/:id/materials/upload-pdf
    * Realiza o upload de arquivos PDF de materiais didáticos da turma.
    * Salva via StorageService desacoplado e retorna a URL pública gerada (fileUrl).

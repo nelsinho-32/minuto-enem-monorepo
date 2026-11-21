@@ -3,6 +3,11 @@ import { spacedRepetitionController } from "../controllers/spaced-repetition.con
 
 const spacedRepetitionRoutes = Router();
 
+// Feed diário de questões programadas para revisão hoje (SM-2)
+spacedRepetitionRoutes.get("/today", (req, res) =>
+  spacedRepetitionController.getTodayReviews(req, res)
+);
+
 // Fila de flashcards devidos hoje para o aluno
 spacedRepetitionRoutes.get("/due", (req, res) =>
   spacedRepetitionController.getDueQueue(req, res)

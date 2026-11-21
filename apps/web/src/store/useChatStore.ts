@@ -1,298 +1,273 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
-import { safeStorage } from '@/services/safeStorage';
-import { api, BASE_URL } from '@/services/api';
-import { useUserStore } from './useUserStore';
+import { api } from '@/services/api';
 
-export type ChatCategory = 'MACETE' | 'QUESTAO' | 'DUVIDA' | 'GERAL';
+export type ChatCategory = 'GERAL' | 'DUVIDA' | 'MACETE' | 'QUESTAO';
+export type ChatRoomType = 'GLOBAL' | 'CLASSROOM' | 'DIRECT';
 
-export interface ChatMessage {
+export interface ChatRoomItem {
   id: string;
+  name: string;
+  type: ChatRoomType;
+  classroomId?: string | null;
+  messagesCount?: number;
+  lastMessage?: {
+    id: string;
+    content: string;
+    senderName: string;
+    createdAt: string;
+  } | null;
+  peer?: {
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+  } | null;
+  updatedAt?: string;
+}
+
+export interface ChatMessageItem {
+  id: string;
+  roomId: string;
   senderId: string;
   senderName: string;
-  senderAvatar?: string;
-  isMe?: boolean;
+  senderRole: string;
+  content: string;
   category: ChatCategory;
-  subjectTag?: string;
-  content: string;
-  timestamp: string;
-  likes: number;
-  likedByMe?: boolean;
+  subjectTag?: string | null;
+  likesCount: number;
+  likedByMe: boolean;
+  createdAt: string;
 }
 
-export interface SocraticMessage {
+export interface ChatUserOption {
   id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  subjectTag?: string;
-  timestamp: string;
-  isStreaming?: boolean;
-  questionId?: string;
-  relatedLessons?: { id: string; title: string; subject: string }[];
+  name: string;
+  email: string;
+  role: string;
+  school?: { name: string } | null;
 }
-
-export interface QuestionSearchResult {
-  id: string;
-  year: number;
-  area: string;
-  subject: string;
-  text: string;
-  errorRate?: number;
-  similarityScore?: number;
-}
-
-const INITIAL_COMMUNITY_MESSAGES: ChatMessage[] = [
-  {
-    id: 'msg-1',
-    senderId: 'user-carlos',
-    senderName: 'Carlos Eduardo',
-    category: 'MACETE',
-    subjectTag: 'Matemática',
-    content:
-      'Macete para Vértice da Parábola: Xv = -b / (2a) e Yv = -Δ / (4a). Sempre cai para calcular pontos máximos de lucro ou altitude!',
-    timestamp: '14:20',
-    likes: 5,
-    likedByMe: true,
-  },
-  {
-    id: 'msg-2',
-    senderId: 'user-ana',
-    senderName: 'Ana Beatriz',
-    category: 'QUESTAO',
-    subjectTag: 'Física',
-    content:
-      'Alguém conseguiu resolver a questão de Termodinâmica sobre rendimento do ciclo de Carnot?',
-    timestamp: '15:05',
-    likes: 3,
-  },
-  {
-    id: 'msg-3',
-    senderId: 'user-lucas',
-    senderName: 'Lucas Silva',
-    category: 'DUVIDA',
-    subjectTag: 'Literatura',
-    content:
-      'Qual a diferença crucial entre a 1ª fase (destruição) e a 2ª fase (construção/social) do Modernismo no ENEM?',
-    timestamp: '16:12',
-    likes: 2,
-  },
-];
-
-const INITIAL_SOCRATIC_MESSAGES: SocraticMessage[] = [
-  {
-    id: 'welcome-socratic',
-    role: 'assistant',
-    subjectTag: 'Método Socrático',
-    timestamp: 'Agora',
-    content:
-      'Olá! Sou o seu **Tutor Socrático de IA** para o ENEM. 🧠\n\nMeu objetivo é guiar seu raciocínio com **perguntas estratégicas**, conexões interdisciplinares e análise de distratores sem entregar a resposta pronta de imediato.\n\n```python\n# Algoritmo de Aprendizagem Socrática\ndef resolver_duvida(enunciado, duvida_aluno):\n    conceito_chave = identificar_fundamento(enunciado)\n    return construir_solucao_passo_a_passo(conceito_chave)\n```\n\nQual tema, fórmula ou questão do ENEM você gostaria de explorar hoje?',
-  },
-];
 
 interface ChatState {
-  // Chat da Comunidade
-  messages: ChatMessage[];
-  addMessage: (msg: Omit<ChatMessage, 'id' | 'timestamp' | 'likes'>) => void;
-  toggleLike: (id: string) => void;
+  globalRoom: ChatRoomItem | null;
+  classroomRooms: ChatRoomItem[];
+  directRooms: ChatRoomItem[];
+  activeRoomId: string | null;
+  messagesByRoom: Record<string, ChatMessageItem[]>;
+  isLoadingRooms: boolean;
+  isLoadingMessages: boolean;
+  isSending: boolean;
+  error: string | null;
 
-  // Tutor Socrático com IA e RAG
-  socraticMessages: SocraticMessage[];
-  activeSubject: string;
-  isTyping: boolean;
-  searchResults: QuestionSearchResult[];
-  isSearching: boolean;
-
-  setActiveSubject: (subject: string) => void;
-  sendSocraticMessage: (
-    userText: string,
-    subject?: string,
-    questionId?: string
-  ) => Promise<void>;
-  searchQuestions: (query: string, area?: string) => Promise<QuestionSearchResult[]>;
-  clearSocraticMessages: () => void;
+  fetchRooms: () => Promise<void>;
+  setActiveRoomId: (roomId: string) => void;
+  fetchMessages: (roomId: string) => Promise<void>;
+  sendMessage: (params: {
+    roomId: string;
+    content: string;
+    category?: ChatCategory;
+    subjectTag?: string;
+  }) => Promise<ChatMessageItem | null>;
+  appendIncomingMessage: (msg: ChatMessageItem) => void;
+  updateMessageLikes: (messageId: string, likesCount: number, likedByMe?: boolean) => void;
+  toggleLike: (messageId: string) => Promise<void>;
+  startDirectChat: (targetUserId: string) => Promise<ChatRoomItem | null>;
+  searchUsers: (query: string) => Promise<ChatUserOption[]>;
 }
 
-export const useChatStore = create<ChatState>()(
-  persist(
-    (set, get) => ({
-      messages: INITIAL_COMMUNITY_MESSAGES,
-      socraticMessages: INITIAL_SOCRATIC_MESSAGES,
-      activeSubject: 'Matemática',
-      isTyping: false,
-      searchResults: [],
-      isSearching: false,
+export const useChatStore = create<ChatState>((set, get) => ({
+  globalRoom: null,
+  classroomRooms: [],
+  directRooms: [],
+  activeRoomId: null,
+  messagesByRoom: {},
+  isLoadingRooms: false,
+  isLoadingMessages: false,
+  isSending: false,
+  error: null,
 
-      setActiveSubject: (subject: string) => set({ activeSubject: subject }),
+  fetchRooms: async () => {
+    set({ isLoadingRooms: true, error: null });
+    try {
+      const data = await api.get<{
+        global: ChatRoomItem;
+        classrooms: ChatRoomItem[];
+        directs: ChatRoomItem[];
+      }>('/chat/rooms');
 
-      addMessage: (newMsg) => {
-        const now = new Date();
-        const timestamp = `${now.getHours().toString().padStart(2, '0')}:${now
-          .getMinutes()
-          .toString()
-          .padStart(2, '0')}`;
-        const message: ChatMessage = {
-          ...newMsg,
-          id: `chat-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-          timestamp,
-          likes: 0,
-          likedByMe: false,
-          isMe: true,
-        };
+      const currentActive = get().activeRoomId;
+      const privateAndClassRooms = [
+        ...(data.directs || []),
+        ...(data.classrooms || []),
+      ];
+      const allRooms = [
+        ...privateAndClassRooms,
+        ...(data.global ? [data.global] : []),
+      ];
+      const stillExists = allRooms.some((r) => r.id === currentActive);
+      // Prioriza chats com colegas/professores/escola e turmas no lugar do chat global
+      const nextActive = stillExists
+        ? currentActive
+        : privateAndClassRooms[0]?.id || null;
 
-        set((state) => ({
-          messages: [message, ...state.messages],
-        }));
-      },
+      set({
+        globalRoom: data.global || null,
+        classroomRooms: data.classrooms || [],
+        directRooms: data.directs || [],
+        activeRoomId: nextActive,
+        isLoadingRooms: false,
+      });
 
-      toggleLike: (id: string) => {
-        set((state) => ({
-          messages: state.messages.map((m) => {
-            if (m.id !== id) return m;
-            const liked = !m.likedByMe;
-            return {
-              ...m,
-              likedByMe: liked,
-              likes: liked ? m.likes + 1 : Math.max(0, m.likes - 1),
-            };
-          }),
-        }));
-      },
-
-      sendSocraticMessage: async (
-        userText: string,
-        subjectParam?: string,
-        questionId?: string
-      ) => {
-        const currentSubject = subjectParam || get().activeSubject;
-        const now = new Date();
-        const timestamp = `${now.getHours().toString().padStart(2, '0')}:${now
-          .getMinutes()
-          .toString()
-          .padStart(2, '0')}`;
-
-        const userMsg: SocraticMessage = {
-          id: `user_${Date.now()}`,
-          role: 'user',
-          content: userText,
-          subjectTag: currentSubject,
-          timestamp,
-          questionId,
-        };
-
-        const assistantMsgId = `assistant_${Date.now() + 1}`;
-        const placeholderAssistant: SocraticMessage = {
-          id: assistantMsgId,
-          role: 'assistant',
-          content: '',
-          subjectTag: currentSubject,
-          timestamp,
-          isStreaming: true,
-        };
-
-        set((state) => ({
-          socraticMessages: [...state.socraticMessages, userMsg, placeholderAssistant],
-          isTyping: true,
-        }));
-
-        try {
-          const token = useUserStore.getState().token;
-          const user = useUserStore.getState().user;
-
-          // Faz a requisição para a API real do Tutor RAG Socrático
-          const res = await api.post<any>('/ai/tutor', {
-            questionId,
-            studentDoubt: userText,
-            message: userText,
-            subject: currentSubject,
-            userId: user?.id,
-          });
-
-          const replyText =
-            res?.tutorGuidance ||
-            res?.reply ||
-            res?.content ||
-            res?.message ||
-            'Não foi possível formular uma resposta detalhada no momento.';
-
-          const relatedLessons = Array.isArray(res?.referencedLessons)
-            ? res.referencedLessons
-            : undefined;
-
-          set((state) => ({
-            isTyping: false,
-            socraticMessages: state.socraticMessages.map((m) =>
-              m.id === assistantMsgId
-                ? {
-                    ...m,
-                    content: replyText,
-                    isStreaming: false,
-                    relatedLessons,
-                  }
-                : m
-            ),
-          }));
-        } catch (error) {
-          console.warn('[useChatStore Socratic Error]:', error);
-
-          const fallbackGuidance =
-            `Excelente dúvida sobre **${currentSubject}**!\n\n` +
-            `Vamos estruturar o raciocínio socrático passo a passo:\n` +
-            `1. **Comando do ENEM**: Quando você lê *"${userText.slice(0, 70)}"*, quais grandezas e restrições o texto propõe?\n` +
-            `2. **Conceito Chave**: Lembre-se de identificar a relação de proporcionalidade direta ou inversa antes de escolher a fórmula.\n\n` +
-            `> **Pergunta para reflexão**: Se dobrarmos o valor da variável de entrada, o resultado esperado aumenta ou diminui? Tente responder com suas palavras!`;
-
-          set((state) => ({
-            isTyping: false,
-            socraticMessages: state.socraticMessages.map((m) =>
-              m.id === assistantMsgId
-                ? {
-                    ...m,
-                    content: fallbackGuidance,
-                    isStreaming: false,
-                  }
-                : m
-            ),
-          }));
-        }
-      },
-
-      searchQuestions: async (query: string, area?: string) => {
-        if (!query.trim()) return [];
-        set({ isSearching: true });
-
-        try {
-          const params = new URLSearchParams();
-          params.append('query', query.trim());
-          if (area) params.append('area', area);
-
-          const res = await api.get<any>(`/search?${params.toString()}`);
-          const results: QuestionSearchResult[] = Array.isArray(res?.results)
-            ? res.results
-            : Array.isArray(res)
-            ? res
-            : [];
-
-          set({ searchResults: results, isSearching: false });
-          return results;
-        } catch (err) {
-          console.warn('[searchQuestions Error]:', err);
-          set({ searchResults: [], isSearching: false });
-          return [];
-        }
-      },
-
-      clearSocraticMessages: () => {
-        set({ socraticMessages: INITIAL_SOCRATIC_MESSAGES });
-      },
-    }),
-    {
-      name: '@minuto_enem:chat_store_v2',
-      storage: createJSONStorage(() => safeStorage),
-      partialize: (state) => ({
-        messages: state.messages,
-        socraticMessages: state.socraticMessages.slice(-30),
-        activeSubject: state.activeSubject,
-      }),
+      if (nextActive) {
+        await get().fetchMessages(nextActive);
+      }
+    } catch (err: any) {
+      set({
+        isLoadingRooms: false,
+        error: err?.message || 'Não foi possível carregar as conversas.',
+      });
     }
-  )
-);
+  },
+
+  setActiveRoomId: (roomId: string) => {
+    set({ activeRoomId: roomId });
+    get().fetchMessages(roomId);
+  },
+
+  fetchMessages: async (roomId: string) => {
+    if (!roomId) return;
+    set({ isLoadingMessages: true });
+    try {
+      const msgs = await api.get<ChatMessageItem[]>(
+        `/chat/rooms/${roomId}/messages?limit=80`
+      );
+      set((state) => ({
+        messagesByRoom: {
+          ...state.messagesByRoom,
+          [roomId]: Array.isArray(msgs) ? msgs : [],
+        },
+        isLoadingMessages: false,
+      }));
+    } catch {
+      set({ isLoadingMessages: false });
+    }
+  },
+
+  sendMessage: async ({ roomId, content, category = 'GERAL', subjectTag }) => {
+    const trimmed = content.trim();
+    if (!trimmed || !roomId) return null;
+
+    set({ isSending: true, error: null });
+    try {
+      const created = await api.post<ChatMessageItem>(
+        `/chat/rooms/${roomId}/messages`,
+        {
+          content: trimmed,
+          category,
+          subjectTag: subjectTag?.trim() || undefined,
+        }
+      );
+
+      get().appendIncomingMessage(created);
+      set({ isSending: false });
+      return created;
+    } catch (err: any) {
+      set({
+        isSending: false,
+        error: err?.message || 'Erro ao enviar mensagem.',
+      });
+      return null;
+    }
+  },
+
+  appendIncomingMessage: (msg: ChatMessageItem) => {
+    set((state) => {
+      const existing = state.messagesByRoom[msg.roomId] || [];
+      if (existing.some((m) => m.id === msg.id)) {
+        return state;
+      }
+
+      const updateRoomMeta = (room: ChatRoomItem) =>
+        room.id === msg.roomId
+          ? {
+              ...room,
+              messagesCount: (room.messagesCount || 0) + 1,
+              lastMessage: {
+                id: msg.id,
+                content: msg.content,
+                senderName: msg.senderName,
+                createdAt: msg.createdAt,
+              },
+            }
+          : room;
+
+      return {
+        messagesByRoom: {
+          ...state.messagesByRoom,
+          [msg.roomId]: [...existing, msg],
+        },
+        globalRoom: state.globalRoom ? updateRoomMeta(state.globalRoom) : null,
+        classroomRooms: state.classroomRooms.map(updateRoomMeta),
+        directRooms: state.directRooms.map(updateRoomMeta),
+      };
+    });
+  },
+
+  updateMessageLikes: (messageId, likesCount, likedByMe) => {
+    set((state) => {
+      const updatedMap: Record<string, ChatMessageItem[]> = {};
+      for (const [roomId, list] of Object.entries(state.messagesByRoom)) {
+        updatedMap[roomId] = list.map((m) =>
+          m.id === messageId
+            ? {
+                ...m,
+                likesCount,
+                ...(likedByMe !== undefined ? { likedByMe } : {}),
+              }
+            : m
+        );
+      }
+      return { messagesByRoom: updatedMap };
+    });
+  },
+
+  toggleLike: async (messageId: string) => {
+    try {
+      const res = await api.post<{
+        id: string;
+        likesCount: number;
+        likedByMe: boolean;
+      }>(`/chat/messages/${messageId}/like`);
+      get().updateMessageLikes(res.id, res.likesCount, res.likedByMe);
+    } catch {
+      // Falha silenciosa
+    }
+  },
+
+  startDirectChat: async (targetUserId: string) => {
+    try {
+      const room = await api.post<ChatRoomItem>('/chat/direct', {
+        targetUserId,
+      });
+      await get().fetchRooms();
+      if (room?.id) {
+        set({ activeRoomId: room.id });
+        await get().fetchMessages(room.id);
+      }
+      return room;
+    } catch (err: any) {
+      set({ error: err?.message || 'Não foi possível iniciar conversa.' });
+      return null;
+    }
+  },
+
+  searchUsers: async (query: string) => {
+    try {
+      const users = await api.get<ChatUserOption[]>(
+        `/chat/users?q=${encodeURIComponent(query)}`
+      );
+      return Array.isArray(users) ? users : [];
+    } catch {
+      return [];
+    }
+  },
+}));

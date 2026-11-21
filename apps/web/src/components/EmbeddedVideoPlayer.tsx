@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -112,6 +112,12 @@ export const EmbeddedVideoPlayer: React.FC<EmbeddedVideoPlayerProps> = ({
   // Estado de carregamento do iframe
   const [isReady, setIsReady] = useState<boolean>(false);
   const [playerError, setPlayerError] = useState<string | null>(null);
+
+  // Reseta o estado de carregamento/erro ao trocar de videoaula
+  useEffect(() => {
+    setIsReady(false);
+    setPlayerError(null);
+  }, [videoId]);
 
   // Calcula a largura total da tela ou customizada, e altura na proporção exata 16:9
   const playerWidth = useMemo(() => {
