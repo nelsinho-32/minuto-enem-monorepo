@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   useWindowDimensions,
   Modal,
+  Image,
   Platform,
   Linking,
   Alert,
@@ -49,6 +50,27 @@ export default function ClassroomDetailScreen() {
   const user = useUserStore((state) => state.user);
   const token = useUserStore((state) => state.token);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [qrInviteModal, setQrInviteModal] = useState<{
+    visible: boolean;
+    loading: boolean;
+    data: {
+      code: string;
+      inviteUrl: string;
+      qrCodeDataUrl: string;
+      classroomName: string;
+    } | null;
+  }>({ visible: false, loading: false, data: null });
+
+  const handleOpenInviteQr = async (classroomId: string) => {
+    setQrInviteModal({ visible: true, loading: true, data: null });
+    try {
+      const res = await api.get<any>(`/classrooms/${classroomId}/invite-qr`);
+      setQrInviteModal({ visible: true, loading: false, data: res });
+    } catch {
+      setQrInviteModal({ visible: false, loading: false, data: null });
+      Alert.alert('Erro', 'Não foi possível gerar o QR Code de convite da turma.');
+    }
+  };
 
   const handleExportReportPdf = async (classroomId: string, classroomCode?: string) => {
     if (!classroomId || isExportingPdf) return;
@@ -888,6 +910,138 @@ export default function ClassroomDetailScreen() {
                 <FontAwesome5 name="download" size={14} color="#DC2626" />
               </TouchableOpacity>
             )}
+
+            {/* Convite Rápido por Link e QR Code da Turma */}
+            {(user?.role === 'TEACHER' || user?.role === 'SCHOOL' || user?.role === 'ADMIN') && (
+              <TouchableOpacity
+                style={[
+                  styles.highlightBanner,
+                  {
+                    borderColor: theme.isDark ? '#0369A1' : '#BAE6FD',
+                    backgroundColor: theme.isDark ? '#1E293B' : '#F0F9FF',
+                    marginTop: -6,
+                  },
+                ]}
+                activeOpacity={0.8}
+                onPress={() => handleOpenInviteQr(classroom.id)}
+              >
+                <View style={[styles.actionIconBox, { backgroundColor: '#E0F2FE' }]}>
+                  <FontAwesome5 name="qrcode" size={18} color="#0284C7" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={[
+                      styles.actionCardTitle,
+                      { color: theme.isDark ? '#38BDF8' : '#0369A1' },
+                    ]}
+                  >
+                    Convite por Link & QR Code da Turma
+                  </Text>
+                  <Text style={[styles.actionCardSub, { color: theme.textMuted }]}>
+                    Exiba ou compartilhe o QR Code para entrada imediata dos alunos pelo celular.
+                  </Text>
+                </View>
+                <FontAwesome5 name="chevron-right" size={14} color="#0284C7" />
+              </TouchableOpacity>
+            )}
+
+            {/* Modal de QR Code de Convite */}
+            <Modal
+              visible={qrInviteModal.visible}
+              transparent
+              animationType="fade"
+              onRequestClose={() =>
+                setQrInviteModal({ visible: false, loading: false, data: null })
+              }
+            >
+              <View
+                style={{
+                  flex: 1,
+                  backgroundColor: 'rgba(15,23,42,0.6)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: 20,
+                }}
+              >
+                <View
+                  style={{
+                    width: '100%',
+                    maxWidth: 380,
+                    borderRadius: 20,
+                    padding: 22,
+                    alignItems: 'center',
+                    backgroundColor: theme.surface,
+                    borderWidth: 1,
+                    borderColor: theme.border,
+                  }}
+                >
+                  <Text style={{ fontSize: 17, fontWeight: '900', color: theme.text, marginBottom: 4 }}>
+                    QR Code de Convite
+                  </Text>
+                  {qrInviteModal.loading ? (
+                    <ActivityIndicator size="large" color={theme.primary} style={{ marginVertical: 32 }} />
+                  ) : qrInviteModal.data ? (
+                    <>
+                      <Text style={{ fontSize: 12.5, color: theme.textMuted, marginBottom: 14 }}>
+                        {qrInviteModal.data.classroomName} • Código: {qrInviteModal.data.code}
+                      </Text>
+                      <View
+                        style={{
+                          padding: 12,
+                          backgroundColor: '#FFFFFF',
+                          borderRadius: 16,
+                          marginBottom: 14,
+                        }}
+                      >
+                        <Image
+                          source={{ uri: qrInviteModal.data.qrCodeDataUrl }}
+                          style={{ width: 210, height: 210 }}
+                          resizeMode="contain"
+                        />
+                      </View>
+                      <Text
+                        style={{
+                          fontSize: 11.5,
+                          color: theme.textMuted,
+                          textAlign: 'center',
+                          marginBottom: 16,
+                        }}
+                        selectable
+                      >
+                        {qrInviteModal.data.inviteUrl}
+                      </Text>
+                      <TouchableOpacity
+                        onPress={() =>
+                          Share.share({
+                            message: `Entre na turma ${qrInviteModal.data?.classroomName} no Minuto ENEM usando o código ${qrInviteModal.data?.code} ou o link: ${qrInviteModal.data?.inviteUrl}`,
+                          })
+                        }
+                        style={{
+                          width: '100%',
+                          backgroundColor: theme.primary,
+                          paddingVertical: 12,
+                          borderRadius: 12,
+                          alignItems: 'center',
+                          marginBottom: 8,
+                        }}
+                      >
+                        <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 13.5 }}>
+                          Compartilhar Link de Convite
+                        </Text>
+                      </TouchableOpacity>
+                    </>
+                  ) : null}
+                  <TouchableOpacity
+                    onPress={() =>
+                      setQrInviteModal({ visible: false, loading: false, data: null })
+                    }
+                    style={{ paddingVertical: 8 }}
+                  >
+                    <Text style={{ color: theme.textMuted, fontWeight: '700' }}>Fechar</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </Modal>
 
             {/* Cabeçalho da Seção de Exercícios */}
             <View style={styles.exercisesHeaderRow}>

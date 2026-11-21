@@ -372,6 +372,21 @@ export default function SchoolDashboardScreen() {
               Mural de Comunicados ({announcements.length})
             </Text>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.tabButton}
+            onPress={() => router.push('/school/operations' as any)}
+          >
+            <FontAwesome5
+              name="cogs"
+              size={13}
+              color="#7C3AED"
+              style={{ marginRight: 6 }}
+            />
+            <Text style={[styles.tabButtonText, { color: '#7C3AED' }]}>
+              Simulados, Importação & Alertas
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* Main Content Area */}

@@ -10,6 +10,7 @@ import {
 import { useRouter } from "expo-router";
 import { FontAwesome5 } from "@expo/vector-icons";
 import { safeAsyncStorage as AsyncStorage } from "@/services/safeStorage";
+import { api } from "@/services/api";
 import { useTheme , useThemedStyles } from "@/hooks/use-theme";
 import { useNotificationStore } from "@/store/useNotificationStore";
 
@@ -67,6 +68,7 @@ export function NotificationsModal({
   const markAllRealtimeRead = useNotificationStore((s) => s.markAllRead);
   const [activeTab, setActiveTab] = useState<NotificationCategory>("ALL");
   const [readIds, setReadIds] = useState<string[]>([]);
+  const [dbNotifications, setDbNotifications] = useState<any[]>([]);
 
   useEffect(() => {
     AsyncStorage.getItem(READ_NOTIFICATIONS_KEY)
@@ -79,15 +81,37 @@ export function NotificationsModal({
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    if (!visible) return;
+    api
+      .get<{ items: any[] }>("/notifications")
+      .then((res) => {
+        if (Array.isArray(res?.items)) {
+          setDbNotifications(res.items);
+          const serverReadIds = res.items
+            .filter((n) => n.isRead)
+            .map((n) => String(n.id));
+          if (serverReadIds.length > 0) {
+            setReadIds((prev) => Array.from(new Set([...prev, ...serverReadIds])));
+          }
+        }
+      })
+      .catch(() => {});
+  }, [visible]);
+
   const notifications = useMemo<AppNotificationItem[]>(() => {
     const list: AppNotificationItem[] = [];
 
-    // 0. Notificações em tempo real recebidas via Socket.IO
-    for (const rt of realtimeItems) {
+    // 0. Notificações em tempo real e persistidas no banco de dados
+    const mergedLive = [...realtimeItems, ...dbNotifications];
+    const seenLiveIds = new Set<string>();
+    for (const rt of mergedLive) {
+      if (!rt?.id || seenLiveIds.has(rt.id)) continue;
+      seenLiveIds.add(rt.id);
       const cat: "TASKS" | "SCHOOL" | "STUDY" =
         rt.type === "NEW_TASK" || rt.type === "ESSAY_GRADED"
           ? "TASKS"
-          : rt.type === "NEW_ANNOUNCEMENT"
+          : rt.type === "NEW_ANNOUNCEMENT" || rt.type === "INSTITUTIONAL_EXAM"
             ? "SCHOOL"
             : "STUDY";
       list.push({
@@ -95,17 +119,21 @@ export function NotificationsModal({
         category: cat,
         title: rt.title,
         description: rt.body,
-        timeLabel: "Agora",
+        timeLabel: rt.createdAt
+          ? new Date(rt.createdAt).toLocaleDateString("pt-BR")
+          : "Agora",
         icon:
           rt.type === "ESSAY_GRADED"
             ? "pen-fancy"
             : rt.type === "NEW_MESSAGE"
               ? "comment-dots"
-              : "bell",
+              : rt.type === "DROPOUT_ALERT"
+                ? "heart"
+                : "bell",
         color: rt.type === "ESSAY_GRADED" ? "#7C3AED" : "#0284C7",
         bg: rt.type === "ESSAY_GRADED" ? "#F3E8FF" : "#E0F2FE",
         route: rt.route || "/",
-        urgent: rt.type === "ESSAY_GRADED",
+        urgent: rt.type === "ESSAY_GRADED" || rt.type === "DROPOUT_ALERT",
       });
     }
 
@@ -221,7 +249,7 @@ export function NotificationsModal({
     }
 
     return list;
-  }, [realtimeItems, tasks, announcements, difficultySubject, currentStreak]);
+  }, [realtimeItems, dbNotifications, tasks, announcements, difficultySubject, currentStreak]);
 
   const unreadCount = useMemo(() => {
     return notifications.filter((n) => !readIds.includes(n.id)).length;
@@ -240,6 +268,7 @@ export function NotificationsModal({
     if (readIds.includes(id)) return;
     const next = [...readIds, id];
     setReadIds(next);
+    api.patch(`/notifications/${id}/read`, {}).catch(() => {});
     try {
       await AsyncStorage.setItem(READ_NOTIFICATIONS_KEY, JSON.stringify(next));
     } catch {}
@@ -249,6 +278,7 @@ export function NotificationsModal({
     const allIds = notifications.map((n) => n.id);
     setReadIds(allIds);
     markAllRealtimeRead();
+    api.post("/notifications/read-all", {}).catch(() => {});
     try {
       await AsyncStorage.setItem(
         READ_NOTIFICATIONS_KEY,

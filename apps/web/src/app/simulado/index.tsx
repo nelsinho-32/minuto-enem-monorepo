@@ -193,8 +193,65 @@ export default function SimuladoScreen() {
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const [isAnswerSheetOpen, setIsAnswerSheetOpen] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
+  const [institutionalExams, setInstitutionalExams] = useState<any[]>([]);
+  const [activeInstitutionalExamId, setActiveInstitutionalExamId] = useState<string | null>(null);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    api
+      .get<any[]>('/institutional-exams')
+      .then((res) => {
+        if (Array.isArray(res)) setInstitutionalExams(res);
+      })
+      .catch(() => {});
+  }, []);
+
+  const startInstitutionalExam = async (examItem: any) => {
+    setIsLoading(true);
+    setActiveInstitutionalExamId(examItem.id);
+    setActivePreset({
+      id: `inst-${examItem.id}`,
+      title: examItem.title,
+      subtitle: 'Simulado Institucional Unificado',
+      questionCount: examItem.questionsCount || 20,
+      durationMinutes: examItem.durationMinutes || 90,
+      areas: ['Linguagens', 'Humanas', 'Natureza', 'Matemática'],
+      badge: `${examItem.durationMinutes || 90}m`,
+      accent: '#7C3AED',
+      icon: 'university',
+    });
+
+    try {
+      const detail = await api.get<any>(`/institutional-exams/${examItem.id}`);
+      const examQuestions: QuizQuestion[] = (detail?.questions || []).map((q: any) => ({
+        id: String(q.id),
+        subject: String(q.subject || 'Geral'),
+        area: String(q.area || 'Geral'),
+        year: Number(q.year || 2023),
+        difficulty: q.difficulty || 'MEDIUM',
+        text: String(q.text || ''),
+        options: Array.isArray(q.options) ? q.options.map(String) : [],
+        correctAnswer: Number(q.correctAnswer ?? 0),
+        explanation: q.explanation ? String(q.explanation) : undefined,
+        errorRate: q.errorRate !== undefined ? Number(q.errorRate) : 50,
+      }));
+      if (examQuestions.length === 0) {
+        Alert.alert('Aviso', 'Este simulado institucional ainda não possui questões.');
+        return;
+      }
+      setQuestions(examQuestions);
+      setAnswers({});
+      setFlagged({});
+      setCurrentIdx(0);
+      setRemainingSeconds((examItem.durationMinutes || 90) * 60);
+      setStage('RUNNING');
+    } catch {
+      Alert.alert('Erro', 'Não foi possível abrir o simulado institucional.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (stage !== 'RUNNING') {
@@ -220,6 +277,7 @@ export default function SimuladoScreen() {
 
   const startSimulado = async (preset: SimuladoPreset) => {
     setIsLoading(true);
+    setActiveInstitutionalExamId(null);
     setActivePreset(preset);
     setUsingOfflineData(false);
 
@@ -323,6 +381,20 @@ export default function SimuladoScreen() {
     const result = estimateTriScore(questions, answers);
     const earnedXp = result.correctCount * 15 + 40;
     addXp(earnedXp);
+
+    // Se for Simulado Institucional Unificado, registra entrega oficial na escola
+    if (activeInstitutionalExamId) {
+      const answerMapByQuestionId: Record<string, number> = {};
+      Object.entries(answers).forEach(([idxStr, sel]) => {
+        const q = questions[Number(idxStr)];
+        if (q) answerMapByQuestionId[String(q.id)] = sel;
+      });
+      await api
+        .post(`/institutional-exams/${activeInstitutionalExamId}/submit`, {
+          answers: answerMapByQuestionId,
+        })
+        .catch(() => {});
+    }
 
     // Envia respostas para o servidor (ou fila offline) em background
     const entries = Object.entries(answers);
@@ -488,6 +560,42 @@ export default function SimuladoScreen() {
               {targetCourse} • {targetScore} pts).
             </Text>
           </View>
+
+          {!isLoading && institutionalExams.length > 0 && (
+            <View style={{ marginBottom: 18, gap: 10 }}>
+              <Text style={{ fontSize: 14, fontWeight: '800', color: theme.text }}>
+                Simulados Institucionais da sua Escola
+              </Text>
+              {institutionalExams.map((ex) => (
+                <TouchableOpacity
+                  key={ex.id}
+                  activeOpacity={0.85}
+                  onPress={() => startInstitutionalExam(ex)}
+                  style={[
+                    styles.presetCard,
+                    {
+                      backgroundColor: theme.surface,
+                      borderColor: '#7C3AED',
+                    },
+                  ]}
+                >
+                  <View style={[styles.presetIconBox, { backgroundColor: '#F3E8FF' }]}>
+                    <FontAwesome5 name="university" size={18} color="#7C3AED" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.presetTitle, { color: theme.text }]}>
+                      {ex.title}
+                    </Text>
+                    <Text style={[styles.presetSub, { color: theme.textMuted }]}>
+                      {ex.questionsCount} questões • {ex.durationMinutes} min
+                      {ex.myAttempt ? ` • Sua nota TRI: ${ex.myAttempt.triScore}` : ' • Pendente'}
+                    </Text>
+                  </View>
+                  <FontAwesome5 name="play-circle" size={18} color="#7C3AED" />
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
 
           {isLoading ? (
             <View style={styles.loadingBox}>

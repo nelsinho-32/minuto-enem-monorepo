@@ -33,6 +33,10 @@ import { syncRoutes } from "./routes/sync.routes";
 import { announcementRoutes } from "./routes/announcement.routes";
 import { essayRoutes } from "./routes/essay.routes";
 import { chatRoutes } from "./routes/chat.routes";
+import { notificationRoutes } from "./routes/notification.routes";
+import { studyPlanRoutes } from "./routes/study-plan.routes";
+import { teacherBankRoutes } from "./routes/teacher-bank.routes";
+import { institutionalExamRoutes } from "./routes/institutional-exam.routes";
 import { streakService } from "./services/streak.service";
 import { questionService } from "./services/question.service";
 import { getActiveStorageProviderName } from "./services/storage.service";
@@ -95,14 +99,14 @@ function buildCorsOriginValidator():
 }
 
 // 2. Configuração do Servidor HTTP, Express, CORS e WebSocket (Socket.io)
-const app = express();
+export const app = express();
 app.set(
   "trust proxy",
   process.env.TRUST_PROXY !== undefined
     ? Number(process.env.TRUST_PROXY) || process.env.TRUST_PROXY === "true"
     : 1
 );
-const httpServer = http.createServer(app);
+export const httpServer = http.createServer(app);
 const corsOriginConfig = buildCorsOriginValidator();
 
 export const io = new SocketIOServer(httpServer, {
@@ -197,15 +201,27 @@ const healthCheckHandler = async (_req: express.Request, res: express.Response) 
 app.get("/health", healthCheckHandler);
 app.get("/api/health", healthCheckHandler);
 
-// Registro opcional de Expo Push Token para notificações móveis
-const registerPushTokenHandler = (req: express.Request, res: express.Response) => {
-  const userId = req.user?.id;
-  const token = String(req.body?.token || "").trim();
-  if (!userId || !token) {
-    return res.status(400).json({ error: "Token de notificação push inválido." });
+// Registro persistente de Expo Push Token para notificações móveis
+const registerPushTokenHandler = async (
+  req: express.Request,
+  res: express.Response
+) => {
+  try {
+    const userId = req.user?.id;
+    const token = String(req.body?.token || "").trim();
+    const platform = String(req.body?.platform || "expo");
+    if (!userId || !token) {
+      return res.status(400).json({ error: "Token de notificação push inválido." });
+    }
+    const ok = await realtimeNotificationService.registerPushToken(
+      userId,
+      token,
+      platform
+    );
+    return res.json({ registered: ok });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || "Erro ao registrar push token." });
   }
-  const ok = realtimeNotificationService.registerPushToken(userId, token);
-  return res.json({ registered: ok });
 };
 app.post("/users/push-token", auth, registerPushTokenHandler);
 app.post("/api/users/push-token", auth, registerPushTokenHandler);
@@ -249,6 +265,14 @@ app.use("/essays", essayRoutes);
 app.use("/api/essays", essayRoutes);
 app.use("/chat", chatRoutes);
 app.use("/api/chat", chatRoutes);
+app.use("/notifications", notificationRoutes);
+app.use("/api/notifications", notificationRoutes);
+app.use("/study-plan", studyPlanRoutes);
+app.use("/api/study-plan", studyPlanRoutes);
+app.use("/teacher-bank", teacherBankRoutes);
+app.use("/api/teacher-bank", teacherBankRoutes);
+app.use("/institutional-exams", institutionalExamRoutes);
+app.use("/api/institutional-exams", institutionalExamRoutes);
 app.use("/stats", questionRoutes);
 app.use("/api/stats", questionRoutes);
 
@@ -472,19 +496,21 @@ function getLocalIpAddress(): string {
   return candidates[0]?.address || "localhost";
 }
 
-httpServer.listen(PORT, HOST, () => {
-  const localIp = getLocalIpAddress();
-  console.log(`🚀 API e WebSocket (Socket.io) rodando localmente em: http://localhost:${PORT}`);
-  console.log(`📱 API na rede Wi-Fi (Expo/Celular): http://${localIp}:${PORT}`);
-  console.log(
-    `📦 Storage ativo: ${getActiveStorageProviderName().toUpperCase()} | Rate Limit: ${process.env.DISABLE_RATE_LIMIT === "true" ? "OFF" : "ON"} | WebSocket JWT Auth: ON`
-  );
-  console.log(`🩺 Healthcheck: http://${localIp}:${PORT}/health`);
+if (process.env.VITEST !== "true") {
+  httpServer.listen(PORT, HOST, () => {
+    const localIp = getLocalIpAddress();
+    console.log(`🚀 API e WebSocket (Socket.io) rodando localmente em: http://localhost:${PORT}`);
+    console.log(`📱 API na rede Wi-Fi (Expo/Celular): http://${localIp}:${PORT}`);
+    console.log(
+      `📦 Storage ativo: ${getActiveStorageProviderName().toUpperCase()} | Rate Limit: ${process.env.DISABLE_RATE_LIMIT === "true" ? "OFF" : "ON"} | WebSocket JWT Auth: ON`
+    );
+    console.log(`🩺 Healthcheck: http://${localIp}:${PORT}/health`);
 
-  // Rotina diária (a cada 24h) para verificação de inatividade da ofensiva
-  setInterval(() => {
-    streakService.processDailyInactivityJob().catch((err) => {
-      console.error("[Inactivity Job Error]:", err);
-    });
-  }, 1000 * 60 * 60 * 24);
-});
+    // Rotina diária (a cada 24h) para verificação de inatividade da ofensiva
+    setInterval(() => {
+      streakService.processDailyInactivityJob().catch((err) => {
+        console.error("[Inactivity Job Error]:", err);
+      });
+    }, 1000 * 60 * 60 * 24);
+  });
+}

@@ -439,25 +439,77 @@ export default function HomeScreen() {
             )}
 
             {user?.role === "TEACHER" && (
-              <TouchableOpacity
-                style={[styles.b2bCard, { borderColor: "#E9D5FF", backgroundColor: "#FAF5FF" }]}
-                activeOpacity={0.85}
-                onPress={() => router.push("/teacher/essays" as any)}
-              >
-                <View style={[styles.b2bIconBox, { backgroundColor: "#8E44AD" }]}>
-                  <FontAwesome5 name="pen-fancy" size={15} color="#FFF" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.b2bTitle, { color: "#6B21A8" }]}>
-                    Oficina Nota 1000 — Corrigir Redações
-                  </Text>
-                  <Text style={styles.b2bSub}>
-                    Avalie redações manuscritas com zoom e 5 competências.
-                  </Text>
-                </View>
-                <FontAwesome5 name="chevron-right" size={13} color="#8E44AD" />
-              </TouchableOpacity>
+              <>
+                <TouchableOpacity
+                  style={[styles.b2bCard, { borderColor: "#E9D5FF", backgroundColor: "#FAF5FF" }]}
+                  activeOpacity={0.85}
+                  onPress={() => router.push("/teacher/essays" as any)}
+                >
+                  <View style={[styles.b2bIconBox, { backgroundColor: "#8E44AD" }]}>
+                    <FontAwesome5 name="pen-fancy" size={15} color="#FFF" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.b2bTitle, { color: "#6B21A8" }]}>
+                      Oficina Nota 1000 — Corrigir Redações
+                    </Text>
+                    <Text style={styles.b2bSub}>
+                      Avalie redações manuscritas com marcações visuais e 5 competências.
+                    </Text>
+                  </View>
+                  <FontAwesome5 name="chevron-right" size={13} color="#8E44AD" />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.b2bCard, { borderColor: "#BBF7D0", backgroundColor: "#F0FDF4" }]}
+                  activeOpacity={0.85}
+                  onPress={() => router.push("/teacher/bank" as any)}
+                >
+                  <View style={[styles.b2bIconBox, { backgroundColor: "#16A34A" }]}>
+                    <FontAwesome5 name="layer-group" size={15} color="#FFF" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.b2bTitle, { color: "#15803D" }]}>
+                      Banco Autoral de Questões e Listas
+                    </Text>
+                    <Text style={styles.b2bSub}>
+                      Crie questões próprias e aplique modelos reutilizáveis nas suas turmas.
+                    </Text>
+                  </View>
+                  <FontAwesome5 name="chevron-right" size={13} color="#16A34A" />
+                </TouchableOpacity>
+              </>
             )}
+
+            {/* Atalho Cronograma Semanal Adaptativo */}
+            <TouchableOpacity
+              style={[
+                styles.b2bCard,
+                {
+                  borderColor: theme.isDark ? "#14532D" : "#BBF7D0",
+                  backgroundColor: theme.isDark ? "#1E293B" : "#F0FDF4",
+                },
+              ]}
+              activeOpacity={0.85}
+              onPress={() => router.push("/study-plan" as any)}
+            >
+              <View style={[styles.b2bIconBox, { backgroundColor: "#16A34A" }]}>
+                <FontAwesome5 name="calendar-check" size={16} color="#FFF" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={[
+                    styles.b2bTitle,
+                    { color: theme.isDark ? "#4ADE80" : "#15803D" },
+                  ]}
+                >
+                  Cronograma Semanal Adaptativo
+                </Text>
+                <Text style={[styles.b2bSub, { color: theme.textMuted }]}>
+                  Plano personalizado focado nas suas matérias de maior atenção (+20 XP/bloco).
+                </Text>
+              </View>
+              <FontAwesome5 name="chevron-right" size={13} color="#16A34A" />
+            </TouchableOpacity>
 
             {/* Atalho Simulado Oficial Cronometrado + Simulador SISU */}
             <TouchableOpacity

@@ -34,10 +34,11 @@ model School {
   slug          String         @unique
   isActive      Boolean        @default(true)
   settings      Json?          @default("{}")
-  users         User[]
-  classrooms    Classroom[]
-  announcements Announcement[]
-  createdAt     DateTime       @default(now())
+  users              User[]
+  classrooms         Classroom[]
+  announcements      Announcement[]
+  institutionalExams InstitutionalExam[]
+  createdAt          DateTime            @default(now())
   updatedAt     DateTime       @default(now()) @updatedAt
 
   @@index([code])
@@ -74,9 +75,16 @@ model User {
   spacedRepetitions  SpacedRepetition[]
   essaySubmissions   EssaySubmission[]
   correctedEssays    EssaySubmission[] @relation("EssayCorrector")
-  chatRooms          ChatRoom[]        @relation("ChatRoomParticipants")
-  sentChatMessages   ChatMessage[]     @relation("SentChatMessages")
-  createdAt          DateTime          @default(now())
+  chatRooms                 ChatRoom[]                 @relation("ChatRoomParticipants")
+  sentChatMessages          ChatMessage[]              @relation("SentChatMessages")
+  pushTokens                PushToken[]
+  notifications             Notification[]
+  studyPlanItems            StudyPlanItem[]
+  authoredQuestions         Question[]                 @relation("AuthoredQuestions")
+  taskTemplates             TaskTemplate[]             @relation("TeacherTaskTemplates")
+  createdInstitutionalExams InstitutionalExam[]        @relation("CreatedInstitutionalExams")
+  institutionalExamAttempts InstitutionalExamAttempt[] @relation("StudentExamAttempts")
+  createdAt                 DateTime                   @default(now())
   updatedAt          DateTime          @default(now()) @updatedAt
 
   @@index([role])
@@ -207,6 +215,7 @@ model EssaySubmission {
   competency5     Int?      // 0 a 200
   finalScore      Int?      // 0 a 1000 (soma de c1 a c5 gerada automaticamente)
   generalFeedback String?   @db.Text
+  annotations     Json?     @default("[]") // Marcações visuais sobre a foto da redação
   correctedById   String?
   correctedBy     User?     @relation("EssayCorrector", fields: [correctedById], references: [id], onDelete: SetNull)
   correctedAt     DateTime?
@@ -294,9 +303,13 @@ model Question {
   text             String            @db.Text
   options          Json
   correctAnswer    Int
-  explanation      String?           @db.Text
-  errorRate        Float?
-  attempts         QuestionAttempt[]
+  explanation       String?            @db.Text
+  errorRate         Float?
+  isCustom          Boolean            @default(false)
+  authorId          String?
+  author            User?              @relation("AuthoredQuestions", fields: [authorId], references: [id], onDelete: SetNull)
+  schoolId          String?
+  attempts          QuestionAttempt[]
   flashcardReviews FlashcardReview[]
   spacedRepetitions SpacedRepetition[]
   createdAt        DateTime          @default(now())
@@ -569,4 +582,130 @@ model ChatMessage {
 
   @@index([roomId, createdAt])
   @@index([senderId])
+}
+
+// ==========================================
+// PUSH TOKENS & HISTÓRICO DE NOTIFICAÇÕES
+// ==========================================
+
+model PushToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  platform  String?  @default("expo")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model Notification {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        String    @default("SYSTEM") // ESSAY_GRADED | NEW_TASK | NEW_ANNOUNCEMENT | NEW_MESSAGE | DROPOUT_ALERT | INSTITUTIONAL_EXAM | SYSTEM
+  title       String
+  body        String    @db.Text
+  route       String?
+  routeParams Json?
+  isRead      Boolean   @default(false)
+  readAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
+}
+
+// ==========================================
+// CRONOGRAMA SEMANAL ADAPTATIVO (PLANO DE ESTUDOS)
+// ==========================================
+
+model StudyPlanItem {
+  id              String    @id @default(uuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dayOfWeek       Int       // 1=Segunda .. 7=Domingo
+  slotOrder       Int       @default(0)
+  subject         String
+  area            String
+  topic           String
+  durationMinutes Int       @default(30)
+  activityType    String    @default("QUESTIONS") // LESSON | QUESTIONS | SM2 | ESSAY | SIMULADO
+  completed       Boolean   @default(false)
+  completedAt     DateTime?
+  weekStart       String    // YYYY-MM-DD (segunda-feira da semana)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([userId, weekStart])
+  @@index([userId, dayOfWeek])
+}
+
+// ==========================================
+// BANCO DE MODELOS DE LISTAS DO PROFESSOR
+// ==========================================
+
+model TaskTemplate {
+  id           String   @id @default(uuid())
+  title        String
+  topic        String
+  description  String?  @db.Text
+  creationMode String   @default("CUSTOM")
+  questionIds  String[] @default([])
+  teacherId    String
+  teacher      User     @relation("TeacherTaskTemplates", fields: [teacherId], references: [id], onDelete: Cascade)
+  schoolId     String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([teacherId])
+  @@index([schoolId])
+}
+
+// ==========================================
+// SIMULADOS INSTITUCIONAIS UNIFICADOS (ESCOLA)
+// ==========================================
+
+model InstitutionalExam {
+  id              String                     @id @default(uuid())
+  schoolId        String
+  school          School                     @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  createdById     String
+  createdBy       User                       @relation("CreatedInstitutionalExams", fields: [createdById], references: [id], onDelete: Cascade)
+  title           String
+  description     String?                    @db.Text
+  durationMinutes Int                        @default(90)
+  startsAt        DateTime
+  endsAt          DateTime
+  questionIds     String[]                   @default([])
+  classroomIds    String[]                   @default([])
+  status          String                     @default("SCHEDULED") // SCHEDULED | ACTIVE | CLOSED
+  attempts        InstitutionalExamAttempt[]
+  createdAt       DateTime                   @default(now())
+  updatedAt       DateTime                   @updatedAt
+
+  @@index([schoolId])
+  @@index([startsAt, endsAt])
+}
+
+model InstitutionalExamAttempt {
+  id              String            @id @default(uuid())
+  examId          String
+  exam            InstitutionalExam @relation(fields: [examId], references: [id], onDelete: Cascade)
+  studentId       String
+  student         User              @relation("StudentExamAttempts", fields: [studentId], references: [id], onDelete: Cascade)
+  classroomId     String?
+  answers         Json              @default("{}")
+  correctCount    Int               @default(0)
+  totalQuestions  Int               @default(0)
+  accuracyPercent Float             @default(0)
+  triScore        Int               @default(300)
+  areaScores      Json?             @default("{}")
+  submittedAt     DateTime          @default(now())
+
+  @@unique([examId, studentId])
+  @@index([examId])
+  @@index([studentId])
+  @@index([classroomId])
 }

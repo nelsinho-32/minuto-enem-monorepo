@@ -19,7 +19,19 @@ import { FontAwesome5 } from '@expo/vector-icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, BASE_URL } from '@/services/api';
 import { RoleGuard } from '@/components/RoleGuard';
-import { ENEM_COMPETENCIES, CompetencyLevelValues } from '@minuto-enem/shared';
+import {
+  ENEM_COMPETENCIES,
+  CompetencyLevelValues,
+  type EssayAnnotation,
+} from '@minuto-enem/shared';
+
+const PIN_COLORS: Record<number, string> = {
+  1: '#0284C7',
+  2: '#7C3AED',
+  3: '#D97706',
+  4: '#16A34A',
+  5: '#DC2626',
+};
 
 export default function TeacherGradeEssayScreen() {
   const styles = useThemedStyles(baseStyles);
@@ -38,8 +50,17 @@ export default function TeacherGradeEssayScreen() {
   const [competency5, setCompetency5] = useState<number>(120);
   const [generalFeedback, setGeneralFeedback] = useState<string>('');
 
-  // Estado de zoom do visualizador da imagem
+  // Estado de zoom e correção visual direta sobre a folha (anotações/marcadores C1-C5)
   const [zoomScale, setZoomScale] = useState<number>(1);
+  const [pinMode, setPinMode] = useState<boolean>(false);
+  const [annotations, setAnnotations] = useState<EssayAnnotation[]>([]);
+  const [imageSize, setImageSize] = useState<{ w: number; h: number }>({ w: 360, h: 480 });
+  const [draftPin, setDraftPin] = useState<{
+    xPercent: number;
+    yPercent: number;
+    competency: number;
+    comment: string;
+  } | null>(null);
 
   // Busca detalhes da submissão da redação
   const {
@@ -77,6 +98,9 @@ export default function TeacherGradeEssayScreen() {
       if (essay.generalFeedback) {
         setGeneralFeedback(essay.generalFeedback);
       }
+      if (Array.isArray(essay.annotations)) {
+        setAnnotations(essay.annotations);
+      }
     }
   }, [essay]);
 
@@ -100,6 +124,7 @@ export default function TeacherGradeEssayScreen() {
         competency4,
         competency5,
         generalFeedback: generalFeedback.trim(),
+        annotations,
       };
 
       const res = await api.patch<any>(`/essays/${id}/grade`, payload);
@@ -240,6 +265,38 @@ export default function TeacherGradeEssayScreen() {
 
                 <View style={styles.zoomButtonsGroup}>
                   <TouchableOpacity
+                    style={[
+                      styles.zoomResetBtn,
+                      {
+                        backgroundColor: pinMode ? '#7C3AED' : '#F3E8FF',
+                        marginRight: 6,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 5,
+                      },
+                    ]}
+                    onPress={() => {
+                      setPinMode((p) => !p);
+                      setDraftPin(null);
+                    }}
+                    activeOpacity={0.75}
+                  >
+                    <FontAwesome5
+                      name="map-pin"
+                      size={11}
+                      color={pinMode ? '#FFF' : '#7C3AED'}
+                    />
+                    <Text
+                      style={[
+                        styles.zoomResetText,
+                        { color: pinMode ? '#FFF' : '#7C3AED' },
+                      ]}
+                    >
+                      {pinMode ? 'Marcando...' : `Marcar (${annotations.length})`}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
                     style={styles.zoomBtn}
                     onPress={() => setZoomScale((s) => Math.max(0.75, Number((s - 0.25).toFixed(2))))}
                     activeOpacity={0.7}
@@ -281,16 +338,84 @@ export default function TeacherGradeEssayScreen() {
                       contentContainerStyle={styles.imageScrollContent}
                       showsVerticalScrollIndicator
                     >
-                      <Image
-                        source={{ uri: fullImageUrl }}
-                        style={[
-                          styles.essayImage,
-                          {
-                            transform: [{ scale: zoomScale }],
-                          },
-                        ]}
-                        resizeMode="contain"
-                      />
+                      <TouchableOpacity
+                        activeOpacity={1}
+                        disabled={!pinMode}
+                        onLayout={(e) => {
+                          const { width: w, height: h } = e.nativeEvent.layout;
+                          if (w > 0 && h > 0) setImageSize({ w, h });
+                        }}
+                        onPress={(e) => {
+                          if (!pinMode) return;
+                          const { locationX, locationY } = e.nativeEvent;
+                          const xPercent = Math.min(
+                            96,
+                            Math.max(4, Math.round((locationX / Math.max(imageSize.w, 1)) * 100))
+                          );
+                          const yPercent = Math.min(
+                            96,
+                            Math.max(4, Math.round((locationY / Math.max(imageSize.h, 1)) * 100))
+                          );
+                          setDraftPin({
+                            xPercent,
+                            yPercent,
+                            competency: 1,
+                            comment: '',
+                          });
+                        }}
+                        style={{ position: 'relative', transform: [{ scale: zoomScale }] }}
+                      >
+                        <Image
+                          source={{ uri: fullImageUrl }}
+                          style={styles.essayImage}
+                          resizeMode="contain"
+                        />
+
+                        {annotations.map((ann, idx) => (
+                          <TouchableOpacity
+                            key={ann.id}
+                            onPress={() =>
+                              Alert.alert(
+                                `Marcação #${idx + 1} (C${ann.competency})`,
+                                ann.comment,
+                                [
+                                  { text: 'Fechar', style: 'cancel' },
+                                  {
+                                    text: 'Remover',
+                                    style: 'destructive',
+                                    onPress: () =>
+                                      setAnnotations((prev) =>
+                                        prev.filter((p) => p.id !== ann.id)
+                                      ),
+                                  },
+                                ]
+                              )
+                            }
+                            style={{
+                              position: 'absolute',
+                              left: `${ann.xPercent}%`,
+                              top: `${ann.yPercent}%`,
+                              transform: [{ translateX: -13 }, { translateY: -13 }],
+                              width: 26,
+                              height: 26,
+                              borderRadius: 13,
+                              backgroundColor: PIN_COLORS[ann.competency] || '#0284C7',
+                              borderWidth: 2,
+                              borderColor: '#FFFFFF',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              shadowColor: '#000',
+                              shadowOpacity: 0.3,
+                              shadowRadius: 4,
+                              elevation: 4,
+                            }}
+                          >
+                            <Text style={{ color: '#FFF', fontSize: 10, fontWeight: '900' }}>
+                              C{ann.competency}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </TouchableOpacity>
                     </ScrollView>
                   </ScrollView>
                 ) : (
@@ -300,6 +425,107 @@ export default function TeacherGradeEssayScreen() {
                   </View>
                 )}
               </View>
+
+              {/* Editor rápido de marcação visual sobre a folha */}
+              {draftPin && (
+                <View
+                  style={{
+                    padding: 12,
+                    borderTopWidth: 1,
+                    borderColor: '#E2E8F0',
+                    backgroundColor: '#FAF5FF',
+                    gap: 8,
+                  }}
+                >
+                  <Text style={{ fontSize: 12.5, fontWeight: '800', color: '#6B21A8' }}>
+                    Nova Marcação na Folha ({draftPin.xPercent}%, {draftPin.yPercent}%)
+                  </Text>
+                  <View style={{ flexDirection: 'row', gap: 6 }}>
+                    {[1, 2, 3, 4, 5].map((c) => (
+                      <TouchableOpacity
+                        key={c}
+                        onPress={() => setDraftPin({ ...draftPin, competency: c })}
+                        style={{
+                          paddingHorizontal: 10,
+                          paddingVertical: 5,
+                          borderRadius: 8,
+                          backgroundColor:
+                            draftPin.competency === c ? PIN_COLORS[c] : '#FFFFFF',
+                          borderWidth: 1,
+                          borderColor: PIN_COLORS[c],
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 11.5,
+                            fontWeight: '800',
+                            color: draftPin.competency === c ? '#FFF' : PIN_COLORS[c],
+                          }}
+                        >
+                          C{c}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <TextInput
+                    style={{
+                      backgroundColor: '#FFF',
+                      borderWidth: 1,
+                      borderColor: '#CBD5E1',
+                      borderRadius: 8,
+                      paddingHorizontal: 10,
+                      paddingVertical: 7,
+                      fontSize: 12.5,
+                      color: '#0F172A',
+                    }}
+                    placeholder="Comentário sobre este trecho (ex: C1 — corrigir crase)"
+                    placeholderTextColor="#94A3B8"
+                    value={draftPin.comment}
+                    onChangeText={(txt) => setDraftPin({ ...draftPin, comment: txt })}
+                  />
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <TouchableOpacity
+                      onPress={() => setDraftPin(null)}
+                      style={{
+                        paddingHorizontal: 12,
+                        paddingVertical: 7,
+                        borderRadius: 8,
+                        backgroundColor: '#E2E8F0',
+                      }}
+                    >
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#334155' }}>
+                        Cancelar
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => {
+                        if (!draftPin.comment.trim()) return;
+                        setAnnotations((prev) => [
+                          ...prev,
+                          {
+                            id: `pin_${Date.now()}`,
+                            xPercent: draftPin.xPercent,
+                            yPercent: draftPin.yPercent,
+                            competency: draftPin.competency,
+                            comment: draftPin.comment.trim(),
+                          },
+                        ]);
+                        setDraftPin(null);
+                      }}
+                      style={{
+                        paddingHorizontal: 14,
+                        paddingVertical: 7,
+                        borderRadius: 8,
+                        backgroundColor: '#7C3AED',
+                      }}
+                    >
+                      <Text style={{ fontSize: 12, fontWeight: '800', color: '#FFF' }}>
+                        Fixar Marcação
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
             </View>
 
             {/* ======================================================== */}

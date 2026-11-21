@@ -20,6 +20,16 @@ export const CompetencyScoreSchema = z
   .min(0, "A nota da competência deve ser no mínimo 0.")
   .max(200, "A nota da competência deve ser no máximo 200.");
 
+export const EssayAnnotationSchema = z.object({
+  id: z.string().min(1),
+  xPercent: z.number().min(0).max(100),
+  yPercent: z.number().min(0).max(100),
+  competency: z.coerce.number().int().min(1).max(5),
+  comment: z.string().trim().min(1).max(300),
+});
+
+export type EssayAnnotation = z.infer<typeof EssayAnnotationSchema>;
+
 // ============================================================================
 // ENTIDADE DE SUBMISSÃO DE REDAÇÃO (EssaySubmission)
 // ============================================================================
@@ -36,6 +46,7 @@ export const EssaySubmissionSchema = z.object({
   competency5: CompetencyScoreSchema.nullable().optional(),
   finalScore: z.number().int().min(0).max(1000).nullable().optional(),
   generalFeedback: z.string().nullable().optional(),
+  annotations: z.array(EssayAnnotationSchema).nullable().optional(),
   correctedById: z.string().nullable().optional(),
   correctedAt: z.union([z.coerce.date(), z.string()]).nullable().optional(),
   submittedAt: z.union([z.coerce.date(), z.string()]).optional(),
@@ -81,6 +92,7 @@ export const GradeEssayInputSchema = z.object({
     .string()
     .trim()
     .min(5, "Os comentários do professor devem ter pelo menos 5 caracteres."),
+  annotations: z.array(EssayAnnotationSchema).optional(),
 });
 
 export type GradeEssayInput = z.infer<typeof GradeEssayInputSchema>;

@@ -11,6 +11,7 @@ import {
 import { uploadRateLimiter } from "../middlewares/rate-limit.middleware";
 import { uploadPdfMiddleware } from "../middlewares/upload.middleware";
 import { pdfReportService } from "../services/pdf-report.service";
+import { schoolOpsService } from "../services/school-ops.service";
 
 const classroomRoutes = Router();
 
@@ -100,6 +101,25 @@ classroomRoutes.get("/:id/tasks", auth, (req, res) =>
 classroomRoutes.post("/tasks/:taskId/submit", (req, res) =>
   taskController.submit(req, res)
 );
+
+// Convite por Link + QR Code para matrícula rápida na turma
+classroomRoutes.get("/:id/invite-qr", auth, async (req, res) => {
+  try {
+    const origin =
+      (req.headers.origin as string | undefined) ||
+      `${req.protocol}://${req.get("host")}`;
+    const qrData = await schoolOpsService.generateClassroomInviteQr(
+      String(req.params.id),
+      origin
+    );
+    return res.json(qrData);
+  } catch (err: any) {
+    const status = typeof err?.statusCode === "number" ? err.statusCode : 500;
+    return res
+      .status(status)
+      .json({ error: err?.message || "Erro ao gerar convite QR da turma." });
+  }
+});
 
 // Exportação do Relatório Pedagógico da Turma exclusivamente em PDF
 classroomRoutes.get(

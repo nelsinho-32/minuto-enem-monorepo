@@ -377,6 +377,7 @@ export class EssayService {
         competency5: input.competency5,
         finalScore,
         generalFeedback: input.generalFeedback,
+        annotations: (input.annotations ?? []) as any,
         correctedById: teacherId,
         correctedAt: new Date(),
       },

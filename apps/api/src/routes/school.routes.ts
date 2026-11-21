@@ -2,6 +2,7 @@ import { Router } from "express";
 import { Role } from "@prisma/client";
 import { schoolController } from "../controllers/school.controller";
 import { announcementController } from "../controllers/announcement.controller";
+import { schoolOpsService } from "../services/school-ops.service";
 import {
   auth,
   requireRole,
@@ -55,6 +56,65 @@ schoolRoutes.get("/me/announcements", (req, res) =>
 schoolRoutes.delete("/me/announcements/:id", (req, res) =>
   announcementController.delete(req, res)
 );
+
+// Importação em massa de alunos e professores
+const bulkImportHandler = async (req: any, res: any) => {
+  try {
+    const result = await schoolOpsService.importUsersBulk({
+      requesterId: req.user!.id,
+      schoolId: req.schoolId || req.user!.schoolId,
+      users: req.body?.users,
+      rawText: req.body?.rawText,
+      defaultRole: req.body?.defaultRole,
+      defaultClassroomCode: req.body?.defaultClassroomCode,
+      defaultPassword: req.body?.defaultPassword,
+    });
+    return res.status(201).json(result);
+  } catch (err: any) {
+    const status = typeof err?.statusCode === "number" ? err.statusCode : 500;
+    return res
+      .status(status)
+      .json({ error: err?.message || "Erro na importação em massa de usuários." });
+  }
+};
+schoolRoutes.post("/me/import-users", bulkImportHandler);
+schoolRoutes.post("/import-users", bulkImportHandler);
+
+// Alertas preventivos de evasão e queda de rendimento
+const dropoutAlertsHandler = async (req: any, res: any) => {
+  try {
+    const data = await schoolOpsService.getDropoutAlerts(
+      req.user!.id,
+      req.user!.role,
+      req.schoolId || req.user!.schoolId
+    );
+    return res.json(data);
+  } catch (err: any) {
+    const status = typeof err?.statusCode === "number" ? err.statusCode : 500;
+    return res
+      .status(status)
+      .json({ error: err?.message || "Erro ao calcular alertas de evasão." });
+  }
+};
+schoolRoutes.get("/me/dropout-alerts", dropoutAlertsHandler);
+schoolRoutes.get("/dropout-alerts", dropoutAlertsHandler);
+
+const nudgeHandler = async (req: any, res: any) => {
+  try {
+    const data = await schoolOpsService.nudgeAtRiskStudents(
+      req.body?.studentIds || [],
+      req.body?.message
+    );
+    return res.json(data);
+  } catch (err: any) {
+    const status = typeof err?.statusCode === "number" ? err.statusCode : 500;
+    return res
+      .status(status)
+      .json({ error: err?.message || "Erro ao enviar alerta preventivo." });
+  }
+};
+schoolRoutes.post("/me/dropout-alerts/nudge", nudgeHandler);
+schoolRoutes.post("/dropout-alerts/nudge", nudgeHandler);
 
 export { schoolRoutes };
 

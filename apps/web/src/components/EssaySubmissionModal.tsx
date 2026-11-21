@@ -355,11 +355,60 @@ export function EssaySubmissionModal({
                         style={styles.previewImage}
                         resizeMode="contain"
                       />
+                      {Array.isArray((essayData as any)?.annotations) &&
+                        (essayData as any).annotations.map((ann: any) => (
+                          <View
+                            key={ann.id}
+                            style={{
+                              position: 'absolute',
+                              left: `${ann.xPercent}%`,
+                              top: `${ann.yPercent}%`,
+                              transform: [{ translateX: -12 }, { translateY: -12 }],
+                              width: 24,
+                              height: 24,
+                              borderRadius: 12,
+                              backgroundColor: '#7C3AED',
+                              borderWidth: 2,
+                              borderColor: '#FFFFFF',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            <Text style={{ color: '#FFF', fontSize: 9.5, fontWeight: '900' }}>
+                              C{ann.competency}
+                            </Text>
+                          </View>
+                        ))}
                       <View style={styles.imageOverlayHint}>
                         <FontAwesome5 name="search-plus" size={14} color="#FFF" style={{ marginRight: 6 }} />
                         <Text style={styles.imageOverlayHintText}>Toque para ampliar e ler</Text>
                       </View>
                     </TouchableOpacity>
+
+                    {Array.isArray((essayData as any)?.annotations) &&
+                      (essayData as any).annotations.length > 0 && (
+                        <View
+                          style={{
+                            marginTop: 10,
+                            padding: 12,
+                            borderRadius: 12,
+                            backgroundColor: '#FAF5FF',
+                            borderWidth: 1,
+                            borderColor: '#E9D5FF',
+                            gap: 6,
+                          }}
+                        >
+                          <Text style={{ fontSize: 12.5, fontWeight: '800', color: '#6B21A8' }}>
+                            Marcações Visuais do Professor na Folha ({(essayData as any).annotations.length})
+                          </Text>
+                          {(essayData as any).annotations.map((ann: any, idx: number) => (
+                            <Text key={ann.id || idx} style={{ fontSize: 12.5, color: '#334155' }}>
+                              • <Text style={{ fontWeight: '800', color: '#7C3AED' }}>C{ann.competency}:</Text>{' '}
+                              {ann.comment}
+                            </Text>
+                          ))}
+                        </View>
+                      )}
 
                     {/* Botões para foto recém-selecionada */}
                     {pickedImageUri ? (
