@@ -36,11 +36,13 @@ import { chatRoutes } from "./routes/chat.routes";
 import { streakService } from "./services/streak.service";
 import { questionService } from "./services/question.service";
 import { getActiveStorageProviderName } from "./services/storage.service";
+import { realtimeNotificationService } from "./services/realtime-notification.service";
 import { questionController } from "./controllers/question.controller";
 import { setupDuelWebSocket } from "./websocket/duel.socket";
 import { setupChatWebSocket } from "./websocket/chat.socket";
 import { socketAuthMiddleware } from "./websocket/socket-auth.middleware";
 import { apiGeneralRateLimiter } from "./middlewares/rate-limit.middleware";
+import { auth } from "./middlewares/auth.middleware";
 
 // 1. Configuração de CORS flexível (múltiplas origens separadas por vírgula e curingas de túnel/subdomínio)
 function buildCorsOriginValidator():
@@ -112,6 +114,7 @@ export const io = new SocketIOServer(httpServer, {
 
 // Middleware único de autenticação JWT para todas as conexões WebSocket (Chat + Duelo)
 io.use(socketAuthMiddleware);
+realtimeNotificationService.registerSocketServer(io);
 setupDuelWebSocket(io);
 setupChatWebSocket(io);
 
@@ -193,6 +196,19 @@ const healthCheckHandler = async (_req: express.Request, res: express.Response) 
 };
 app.get("/health", healthCheckHandler);
 app.get("/api/health", healthCheckHandler);
+
+// Registro opcional de Expo Push Token para notificações móveis
+const registerPushTokenHandler = (req: express.Request, res: express.Response) => {
+  const userId = req.user?.id;
+  const token = String(req.body?.token || "").trim();
+  if (!userId || !token) {
+    return res.status(400).json({ error: "Token de notificação push inválido." });
+  }
+  const ok = realtimeNotificationService.registerPushToken(userId, token);
+  return res.json({ registered: ok });
+};
+app.post("/users/push-token", auth, registerPushTokenHandler);
+app.post("/api/users/push-token", auth, registerPushTokenHandler);
 
 // Rotas de Autenticação (suporta /, /auth, /api e /api/auth), Salas, Questões e Ofensiva (Streak)
 app.use("/", authRoutes);

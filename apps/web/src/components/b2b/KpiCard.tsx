@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React from 'react';
 import { View, Text, StyleSheet, ViewStyle } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
@@ -22,6 +23,7 @@ export function KpiCard({
   loading = false,
   style,
 }: KpiCardProps) {
+  const styles = useThemedStyles(baseStyles);
   if (loading) {
     return (
       <View style={[styles.card, style]}>
@@ -55,7 +57,7 @@ export function KpiCard({
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   card: {
     flex: 1,
     minWidth: 220,

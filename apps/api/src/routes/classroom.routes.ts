@@ -10,6 +10,7 @@ import {
 } from "../middlewares/auth.middleware";
 import { uploadRateLimiter } from "../middlewares/rate-limit.middleware";
 import { uploadPdfMiddleware } from "../middlewares/upload.middleware";
+import { pdfReportService } from "../services/pdf-report.service";
 
 const classroomRoutes = Router();
 
@@ -98,6 +99,33 @@ classroomRoutes.get("/:id/tasks", auth, (req, res) =>
 );
 classroomRoutes.post("/tasks/:taskId/submit", (req, res) =>
   taskController.submit(req, res)
+);
+
+// Exportação do Relatório Pedagógico da Turma exclusivamente em PDF
+classroomRoutes.get(
+  "/:id/report-pdf",
+  auth,
+  requireRole([Role.TEACHER, Role.SCHOOL, Role.ADMIN]),
+  requireClassroomTeacherScope,
+  async (req, res) => {
+    try {
+      const classroomId = String(req.params.id);
+      const { fileName, buffer } =
+        await pdfReportService.generateClassroomReportPdf(classroomId);
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${fileName}"`
+      );
+      res.setHeader("Content-Length", String(buffer.length));
+      return res.status(200).send(buffer);
+    } catch (err: any) {
+      const status = typeof err?.statusCode === "number" ? err.statusCode : 500;
+      return res
+        .status(status)
+        .json({ error: err?.message || "Erro ao gerar relatório PDF da turma." });
+    }
+  }
 );
 
 // Detalhes da sala por ID ou Código

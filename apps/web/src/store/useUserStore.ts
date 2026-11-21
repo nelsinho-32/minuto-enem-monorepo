@@ -61,6 +61,11 @@ interface UserState {
   }) => void;
   getWeekDays: () => WeekDayStreakItem[];
 
+  // Preferência de Tema (Claro / Escuro / Sistema — padrão Claro opcional)
+  themePreference: 'light' | 'dark' | 'system';
+  setThemePreference: (pref: 'light' | 'dark' | 'system') => void;
+  toggleDarkMode: () => void;
+
   // Sessão de Quiz Concluída
   lastQuizSession: {
     totalQuestions: number;
@@ -154,6 +159,12 @@ export const useUserStore = create<UserState>()(
       incrementAnsweredQuestions: () =>
         set((state) => ({ answeredQuestionsCount: state.answeredQuestionsCount + 1 })),
       streak: 0,
+      themePreference: 'light',
+      setThemePreference: (pref) => set({ themePreference: pref }),
+      toggleDarkMode: () =>
+        set((state) => ({
+          themePreference: state.themePreference === 'dark' ? 'light' : 'dark',
+        })),
       lastQuizSession: null,
       setLastQuizSession: (session) => set({ lastQuizSession: session }),
       currentStreak: 0,

@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
@@ -94,6 +95,7 @@ async function fetchNotesFromApi(): Promise<NoteItem[]> {
 }
 
 export default function NotesScreen() {
+  const styles = useThemedStyles(baseStyles);
   const router = useRouter();
   const queryClient = useQueryClient();
   const params = useLocalSearchParams<{ tab?: 'questions' | 'general' }>();
@@ -486,7 +488,7 @@ export default function NotesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F7F9FC' },
   header: {
     flexDirection: 'row',

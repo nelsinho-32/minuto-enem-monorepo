@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 
@@ -46,6 +47,7 @@ const variantStyles: Record<
 };
 
 export function Badge({ label, variant = 'secondary', dot = true }: BadgeProps) {
+  const styles = useThemedStyles(baseStyles);
   const conf = variantStyles[variant] || variantStyles.secondary;
 
   return (
@@ -64,7 +66,7 @@ export function Badge({ label, variant = 'secondary', dot = true }: BadgeProps) 
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   badge: {
     flexDirection: 'row',
     alignItems: 'center',

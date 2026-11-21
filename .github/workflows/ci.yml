@@ -1,0 +1,41 @@
+name: CI — Minuto ENEM Monorepo
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    name: Build, Typecheck e Testes Automatizados
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependências do monorepo
+        run: npm ci
+
+      - name: Gerar Prisma Client
+        run: npx prisma generate
+        working-directory: apps/api
+
+      - name: Build do pacote compartilhado (@minuto-enem/shared)
+        run: npm run build:shared
+
+      - name: Typecheck completo (shared, api e web)
+        run: |
+          npx --prefix packages/shared tsc -p packages/shared/tsconfig.json --noEmit
+          npx --prefix apps/api tsc -p apps/api/tsconfig.json --noEmit
+          npx --prefix apps/web tsc -p apps/web/tsconfig.json --noEmit
+
+      - name: Executar suíte de testes unitários e de regras críticas (Vitest)
+        run: npm test

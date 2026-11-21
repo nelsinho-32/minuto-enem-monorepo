@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
@@ -32,6 +33,7 @@ export function HeatmapCard({
   loading = false,
   onAssignReinforcement,
 }: HeatmapCardProps) {
+  const styles = useThemedStyles(baseStyles);
   if (loading) {
     return (
       <View style={styles.container}>
@@ -165,7 +167,7 @@ export function HeatmapCard({
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   container: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,

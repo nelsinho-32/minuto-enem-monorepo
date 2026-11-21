@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React from 'react';
 import {
   View,
@@ -24,6 +25,7 @@ export function ClassroomStudentsTab({
   students = [],
   onShareInvite,
 }: ClassroomStudentsTabProps) {
+  const styles = useThemedStyles(baseStyles);
   return (
     <View style={styles.tabSection}>
       <View style={styles.inviteBox}>
@@ -77,7 +79,7 @@ export function ClassroomStudentsTab({
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   tabSection: { padding: 16, gap: 14 },
   inviteBox: {
     flexDirection: 'row',

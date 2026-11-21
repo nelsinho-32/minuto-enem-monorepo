@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -28,6 +29,7 @@ export function AssignTaskModal({
   onClose,
   onSuccess,
 }: AssignTaskModalProps) {
+  const styles = useThemedStyles(baseStyles);
   const [title, setTitle] = useState('');
   const [topic, setTopic] = useState('');
   const [description, setDescription] = useState('');
@@ -216,7 +218,7 @@ export function AssignTaskModal({
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',

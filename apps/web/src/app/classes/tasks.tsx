@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
@@ -176,6 +177,7 @@ const INITIAL_MOCK_TASKS: { pending: Task[]; completed: Task[] } = {
 const TASKS_STORAGE_KEY = '@minuto_enem:classroom_tasks_v2';
 
 export default function TasksScreen() {
+  const styles = useThemedStyles(baseStyles);
   const router = useRouter();
   const queryClient = useQueryClient();
   const {
@@ -962,7 +964,7 @@ export default function TasksScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
   header: {
     flexDirection: 'row',

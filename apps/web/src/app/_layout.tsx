@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { View, ActivityIndicator, StyleSheet, Platform, AppState } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, Platform, AppState, StatusBar } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { QueryClientProvider, onlineManager } from '@tanstack/react-query';
@@ -9,6 +9,8 @@ import { useOfflineQueueStore } from '@/store/useOfflineQueueStore';
 import { initMobileSentry, Sentry } from '@/services/sentry';
 import { initDatabase } from '@/database/schema';
 import { useSyncManager } from '@/hooks/useSyncManager';
+import { useTheme } from '@/hooks/use-theme';
+import { RealtimeNotificationsBridge } from '@/components/RealtimeNotificationsBridge';
 
 // Inicializa o Sentry no app mobile com rastreamento de erros e performance
 initMobileSentry();
@@ -26,6 +28,7 @@ function RootLayout() {
 
   // Hook central de sincronização offline-first (SQLite SyncQueue + Background Sync)
   const syncManager = useSyncManager();
+  const theme = useTheme();
 
   const isSyncingRef = useRef(false);
   isSyncingRef.current = isSyncing;
@@ -161,15 +164,26 @@ function RootLayout() {
   // Evita flash da tela protegida enquanto o estado persistido está hidratando
   if (!hasHydrated) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#1CB0F6" />
+      <View style={[styles.loadingContainer, { backgroundColor: theme.background }]}>
+        <ActivityIndicator size="large" color={theme.primary} />
       </View>
     );
   }
 
   return (
     <QueryClientProvider client={queryClient}>
-      <Stack screenOptions={{ headerShown: false }} />
+      <StatusBar
+        barStyle={theme.isDark ? 'light-content' : 'dark-content'}
+      />
+      <View style={{ flex: 1, backgroundColor: theme.background }}>
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: theme.background },
+          }}
+        />
+        <RealtimeNotificationsBridge />
+      </View>
     </QueryClientProvider>
   );
 }

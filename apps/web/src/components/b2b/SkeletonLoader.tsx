@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React, { useEffect, useRef } from 'react';
 import { View, StyleSheet, Animated, ViewStyle } from 'react-native';
 
@@ -14,6 +15,7 @@ export function SkeletonLoader({
   borderRadius = 8,
   style,
 }: SkeletonProps) {
+  const styles = useThemedStyles(baseStyles);
   const opacity = useRef(new Animated.Value(0.3)).current;
 
   useEffect(() => {
@@ -52,7 +54,7 @@ export function SkeletonLoader({
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   skeleton: {
     backgroundColor: '#E5E7EB',
   },

@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
@@ -116,6 +117,7 @@ async function fetchTeacherTracking(classId?: string): Promise<TeacherTrackingRe
 }
 
 export default function TeacherTrackingScreen() {
+  const styles = useThemedStyles(baseStyles);
   const router = useRouter();
   const queryClient = useQueryClient();
   const { classId } = useLocalSearchParams<{ classId?: string }>();
@@ -869,7 +871,7 @@ export default function TeacherTrackingScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F7F9FC' },
   header: {
     flexDirection: 'row',

@@ -12,6 +12,7 @@ import {
   Modal,
   Platform,
   Linking,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -32,17 +33,56 @@ import {
 } from '@/components/classroom/ClassroomFeedTab';
 import { ClassroomStudentsTab } from '@/components/classroom/ClassroomStudentsTab';
 import { ClassroomReadingModal } from '@/components/classroom/ClassroomReadingModal';
-import { api } from '@/services/api';
+import { api, BASE_URL } from '@/services/api';
+import { useTheme , useThemedStyles } from '@/hooks/use-theme';
 import { saveTasksLocal, getTasksLocal } from '@/database/schema';
 
 export default function ClassroomDetailScreen() {
+  const styles = useThemedStyles(baseStyles);
   const router = useRouter();
+  const theme = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
 
   const classrooms = useClassroomStore((state) => state.classrooms);
   const deleteClassroom = useClassroomStore((state) => state.deleteClassroom);
   const unenrollClassroom = useClassroomStore((state) => state.unenrollClassroom);
   const user = useUserStore((state) => state.user);
+  const token = useUserStore((state) => state.token);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+
+  const handleExportReportPdf = async (classroomId: string, classroomCode?: string) => {
+    if (!classroomId || isExportingPdf) return;
+    setIsExportingPdf(true);
+    try {
+      const pdfEndpoint = `${BASE_URL}/classrooms/${encodeURIComponent(classroomId)}/report-pdf`;
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        const resp = await fetch(pdfEndpoint, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!resp.ok) {
+          throw new Error('Não foi possível gerar o relatório em PDF.');
+        }
+        const blob = await resp.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = `relatorio-turma-${(classroomCode || classroomId).toLowerCase()}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(blobUrl);
+      } else {
+        await WebBrowser.openBrowserAsync(pdfEndpoint);
+      }
+    } catch (err: any) {
+      Alert.alert(
+        'Erro ao exportar PDF',
+        err?.message || 'Não foi possível baixar o relatório pedagógico em PDF.'
+      );
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
 
   // Busca os dados detalhados reais da sala pelo ID ou código
   const {
@@ -810,6 +850,45 @@ export default function ClassroomDetailScreen() {
               </TouchableOpacity>
             )}
 
+            {/* Exportação do Relatório Pedagógico exclusivamente em PDF (Professor / Escola) */}
+            {(user?.role === 'TEACHER' || user?.role === 'SCHOOL' || user?.role === 'ADMIN') && (
+              <TouchableOpacity
+                style={[
+                  styles.highlightBanner,
+                  {
+                    borderColor: theme.isDark ? '#7F1D1D' : '#FECACA',
+                    backgroundColor: theme.isDark ? '#1E293B' : '#FEF2F2',
+                    marginTop: -6,
+                  },
+                ]}
+                activeOpacity={0.8}
+                disabled={isExportingPdf}
+                onPress={() => handleExportReportPdf(classroom.id, classroom.code)}
+              >
+                <View style={[styles.actionIconBox, { backgroundColor: '#FEE2E2' }]}>
+                  {isExportingPdf ? (
+                    <ActivityIndicator size="small" color="#DC2626" />
+                  ) : (
+                    <FontAwesome5 name="file-pdf" size={18} color="#DC2626" />
+                  )}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={[
+                      styles.actionCardTitle,
+                      { color: theme.isDark ? '#FCA5A5' : '#991B1B' },
+                    ]}
+                  >
+                    Exportar Relatório Pedagógico (PDF)
+                  </Text>
+                  <Text style={[styles.actionCardSub, { color: theme.textMuted }]}>
+                    Gere o boletim completo da turma em PDF com notas C1–C5, áreas do ENEM e alunos em atenção.
+                  </Text>
+                </View>
+                <FontAwesome5 name="download" size={14} color="#DC2626" />
+              </TouchableOpacity>
+            )}
+
             {/* Cabeçalho da Seção de Exercícios */}
             <View style={styles.exercisesHeaderRow}>
               <View style={{ flex: 1 }}>
@@ -1274,7 +1353,7 @@ export default function ClassroomDetailScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F7F9FC' },
   header: {
     flexDirection: 'row',

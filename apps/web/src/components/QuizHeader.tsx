@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons'; // Biblioteca de ícones nativa do Expo
@@ -9,6 +10,7 @@ interface QuizHeaderProps {
 }
 
 export function QuizHeader({ progress, streak, xp }: QuizHeaderProps) {
+  const styles = useThemedStyles(baseStyles);
   return (
     <View style={styles.header}>
       <View style={styles.statBadge}>
@@ -32,7 +34,7 @@ export function QuizHeader({ progress, streak, xp }: QuizHeaderProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',

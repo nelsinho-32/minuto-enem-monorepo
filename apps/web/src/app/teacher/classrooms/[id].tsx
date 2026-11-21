@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React, { useState } from 'react';
 import {
   View,
@@ -69,6 +70,7 @@ function getStudentStatus(student: StudentAnalysis): {
 }
 
 export default function TeacherClassroomAnalyticsScreen() {
+  const styles = useThemedStyles(baseStyles);
   const router = useRouter();
   const params = useLocalSearchParams<{ id: string }>();
   const classroomId = params.id as string;
@@ -380,7 +382,7 @@ export default function TeacherClassroomAnalyticsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#F7F9FC',

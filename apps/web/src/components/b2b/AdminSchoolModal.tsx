@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React, { useState } from 'react';
 import {
   View,
@@ -20,6 +21,7 @@ interface AdminSchoolModalProps {
 }
 
 export function AdminSchoolModal({ visible, onClose, onSuccess }: AdminSchoolModalProps) {
+  const styles = useThemedStyles(baseStyles);
   const [name, setName] = useState('');
   const [cnpj, setCnpj] = useState('');
   const [code, setCode] = useState('');
@@ -266,7 +268,7 @@ export function AdminSchoolModal({ visible, onClose, onSuccess }: AdminSchoolMod
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',

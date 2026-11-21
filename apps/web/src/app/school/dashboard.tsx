@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React, { useState } from 'react';
 import {
   View,
@@ -73,6 +74,7 @@ interface TeacherItem {
 type TabType = 'OVERVIEW' | 'CLASSROOMS' | 'TEACHERS' | 'ANNOUNCEMENTS';
 
 export default function SchoolDashboardScreen() {
+  const styles = useThemedStyles(baseStyles);
   const router = useRouter();
   const queryClient = useQueryClient();
 
@@ -1006,7 +1008,7 @@ export default function SchoolDashboardScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#F7F9FC',

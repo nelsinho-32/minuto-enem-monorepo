@@ -12,45 +12,84 @@ import {
   AutoSizedQuestionImage,
   splitMarkdownSegments,
 } from './QuestionContentRenderer';
+import { useTheme } from '@/hooks/use-theme';
 
 interface OptionButtonProps {
-  label: string;
+  label?: string;
+  letter?: string;
   text: string;
   isSelected: boolean;
-  isAnswered: boolean;
-  isCorrectOption: boolean;
+  isAnswered?: boolean;
+  isCorrectOption?: boolean;
   onPress: () => void;
 }
 
 export function OptionButton({
   label,
+  letter,
   text,
   isSelected,
-  isAnswered,
-  isCorrectOption,
+  isAnswered = false,
+  isCorrectOption = false,
   onPress,
 }: OptionButtonProps) {
-  let containerStyle: StyleProp<ViewStyle> = styles.container;
-  let textStyle: StyleProp<TextStyle> = styles.text;
-  let badgeStyle: StyleProp<ViewStyle> = styles.letterBadge;
-  let badgeTextStyle: StyleProp<TextStyle> = styles.letterBadgeText;
+  const theme = useTheme();
+  const displayLabel = label ?? letter ?? '';
+
+  let containerStyle: StyleProp<ViewStyle> = [
+    styles.container,
+    { backgroundColor: theme.surface, borderColor: theme.border },
+  ];
+  let textStyle: StyleProp<TextStyle> = [styles.text, { color: theme.text }];
+  let badgeStyle: StyleProp<ViewStyle> = [
+    styles.letterBadge,
+    { backgroundColor: theme.surfaceMuted },
+  ];
+  let badgeTextStyle: StyleProp<TextStyle> = [
+    styles.letterBadgeText,
+    { color: theme.textSecondary },
+  ];
 
   if (isAnswered) {
     if (isCorrectOption) {
-      containerStyle = [styles.container, styles.correctContainer];
-      textStyle = [styles.text, styles.correctText];
+      containerStyle = [
+        styles.container,
+        styles.correctContainer,
+        theme.isDark && { backgroundColor: '#052E16', borderColor: '#22C55E' },
+      ];
+      textStyle = [
+        styles.text,
+        styles.correctText,
+        theme.isDark && { color: '#86EFAC' },
+      ];
       badgeStyle = [styles.letterBadge, { backgroundColor: '#16A34A' }];
       badgeTextStyle = [styles.letterBadgeText, { color: '#FFFFFF' }];
     } else if (isSelected) {
-      containerStyle = [styles.container, styles.wrongContainer];
-      textStyle = [styles.text, styles.wrongText];
+      containerStyle = [
+        styles.container,
+        styles.wrongContainer,
+        theme.isDark && { backgroundColor: '#450A0A', borderColor: '#EF4444' },
+      ];
+      textStyle = [
+        styles.text,
+        styles.wrongText,
+        theme.isDark && { color: '#FCA5A5' },
+      ];
       badgeStyle = [styles.letterBadge, { backgroundColor: '#DC2626' }];
       badgeTextStyle = [styles.letterBadgeText, { color: '#FFFFFF' }];
     } else {
-      containerStyle = [styles.container, styles.disabledContainer];
+      containerStyle = [
+        styles.container,
+        { backgroundColor: theme.surface, borderColor: theme.border },
+        styles.disabledContainer,
+      ];
     }
   } else if (isSelected) {
-    containerStyle = [styles.container, styles.selectedContainer];
+    containerStyle = [
+      styles.container,
+      styles.selectedContainer,
+      theme.isDark && { backgroundColor: '#0C4A6E', borderColor: '#38BDF8' },
+    ];
     badgeStyle = [styles.letterBadge, { backgroundColor: '#0284C7' }];
     badgeTextStyle = [styles.letterBadgeText, { color: '#FFFFFF' }];
   }
@@ -67,7 +106,7 @@ export function OptionButton({
     >
       <View style={styles.row}>
         <View style={badgeStyle}>
-          <Text style={badgeTextStyle}>{label}</Text>
+          <Text style={badgeTextStyle}>{displayLabel}</Text>
         </View>
 
         <View style={styles.contentColumn}>

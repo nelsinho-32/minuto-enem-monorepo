@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
@@ -32,6 +33,7 @@ export function DuelResultAnimation({
   onPlayAgain,
   onExit,
 }: DuelResultAnimationProps) {
+  const styles = useThemedStyles(baseStyles);
   const cardScale = useSharedValue(0.6);
   const badgeRotate = useSharedValue(0);
   const badgePulse = useSharedValue(1);
@@ -169,7 +171,7 @@ export function DuelResultAnimation({
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   overlay: {
     position: 'absolute',
     top: 0,

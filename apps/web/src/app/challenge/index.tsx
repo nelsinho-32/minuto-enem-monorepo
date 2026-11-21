@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
@@ -78,6 +79,7 @@ const FALLBACK_DUEL_QUESTIONS: QuizQuestion[] = [
 ];
 
 export default function ChallengeMultiplayerArenaScreen() {
+  const styles = useThemedStyles(baseStyles);
   const router = useRouter();
   const { roomId: paramRoomId, subject: paramSubject } = useLocalSearchParams<{
     roomId?: string;
@@ -799,7 +801,7 @@ export default function ChallengeMultiplayerArenaScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F7F9FC' },
   header: {
     flexDirection: 'row',

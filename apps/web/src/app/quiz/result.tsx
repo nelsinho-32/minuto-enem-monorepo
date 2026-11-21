@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React, { useEffect, useState } from "react";
 import {
   View,
@@ -20,6 +21,7 @@ import { useQuestionsQuery } from "@/hooks/useQuestionsQuery";
 const OPTION_LETTERS = ["A", "B", "C", "D", "E"];
 
 export default function ResultScreen() {
+  const styles = useThemedStyles(baseStyles);
   const router = useRouter();
   const { xp, currentStreak, lastQuizSession } = useUserStore();
   const {
@@ -350,7 +352,7 @@ export default function ResultScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#F7F9FC",

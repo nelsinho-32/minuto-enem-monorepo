@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
@@ -68,6 +69,7 @@ function formatMessageTime(isoDate: string) {
 }
 
 export default function UserChatsAndForumScreen() {
+  const styles = useThemedStyles(baseStyles);
   const router = useRouter();
   const params = useLocalSearchParams<{
     subject?: string;
@@ -1202,7 +1204,7 @@ export default function UserChatsAndForumScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#F8FAFC' },
   topHeader: {
     flexDirection: 'row',

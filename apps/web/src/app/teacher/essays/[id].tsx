@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -21,6 +22,7 @@ import { RoleGuard } from '@/components/RoleGuard';
 import { ENEM_COMPETENCIES, CompetencyLevelValues } from '@minuto-enem/shared';
 
 export default function TeacherGradeEssayScreen() {
+  const styles = useThemedStyles(baseStyles);
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { width } = useWindowDimensions();
@@ -451,7 +453,7 @@ export default function TeacherGradeEssayScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#0F172A',

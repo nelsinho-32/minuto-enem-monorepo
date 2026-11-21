@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React, { useMemo, useState } from 'react';
 import {
   View,
@@ -30,6 +31,7 @@ export function PdfViewerModal({
   title = 'Documento PDF',
   description,
 }: PdfViewerModalProps) {
+  const styles = useThemedStyles(baseStyles);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [isIframeLoading, setIsIframeLoading] = useState(true);
 
@@ -201,7 +203,7 @@ export function PdfViewerModal({
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(15, 23, 42, 0.75)',

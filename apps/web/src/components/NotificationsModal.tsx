@@ -10,6 +10,8 @@ import {
 import { useRouter } from "expo-router";
 import { FontAwesome5 } from "@expo/vector-icons";
 import { safeAsyncStorage as AsyncStorage } from "@/services/safeStorage";
+import { useTheme , useThemedStyles } from "@/hooks/use-theme";
+import { useNotificationStore } from "@/store/useNotificationStore";
 
 const READ_NOTIFICATIONS_KEY = "@minuto_enem:read_notifications_v1";
 
@@ -58,7 +60,11 @@ export function NotificationsModal({
   currentStreak = 0,
   onUnreadCountChange,
 }: NotificationsModalProps) {
+  const styles = useThemedStyles(baseStyles);
   const router = useRouter();
+  const theme = useTheme();
+  const realtimeItems = useNotificationStore((s) => s.realtimeItems);
+  const markAllRealtimeRead = useNotificationStore((s) => s.markAllRead);
   const [activeTab, setActiveTab] = useState<NotificationCategory>("ALL");
   const [readIds, setReadIds] = useState<string[]>([]);
 
@@ -75,6 +81,33 @@ export function NotificationsModal({
 
   const notifications = useMemo<AppNotificationItem[]>(() => {
     const list: AppNotificationItem[] = [];
+
+    // 0. Notificações em tempo real recebidas via Socket.IO
+    for (const rt of realtimeItems) {
+      const cat: "TASKS" | "SCHOOL" | "STUDY" =
+        rt.type === "NEW_TASK" || rt.type === "ESSAY_GRADED"
+          ? "TASKS"
+          : rt.type === "NEW_ANNOUNCEMENT"
+            ? "SCHOOL"
+            : "STUDY";
+      list.push({
+        id: rt.id,
+        category: cat,
+        title: rt.title,
+        description: rt.body,
+        timeLabel: "Agora",
+        icon:
+          rt.type === "ESSAY_GRADED"
+            ? "pen-fancy"
+            : rt.type === "NEW_MESSAGE"
+              ? "comment-dots"
+              : "bell",
+        color: rt.type === "ESSAY_GRADED" ? "#7C3AED" : "#0284C7",
+        bg: rt.type === "ESSAY_GRADED" ? "#F3E8FF" : "#E0F2FE",
+        route: rt.route || "/",
+        urgent: rt.type === "ESSAY_GRADED",
+      });
+    }
 
     // 1. Tarefas atrasadas
     const overdue = tasks.filter(
@@ -188,7 +221,7 @@ export function NotificationsModal({
     }
 
     return list;
-  }, [tasks, announcements, difficultySubject, currentStreak]);
+  }, [realtimeItems, tasks, announcements, difficultySubject, currentStreak]);
 
   const unreadCount = useMemo(() => {
     return notifications.filter((n) => !readIds.includes(n.id)).length;
@@ -215,6 +248,7 @@ export function NotificationsModal({
   const markAllAsRead = async () => {
     const allIds = notifications.map((n) => n.id);
     setReadIds(allIds);
+    markAllRealtimeRead();
     try {
       await AsyncStorage.setItem(
         READ_NOTIFICATIONS_KEY,
@@ -239,16 +273,16 @@ export function NotificationsModal({
       onRequestClose={onClose}
     >
       <View style={styles.overlay}>
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           {/* CABEÇALHO */}
-          <View style={styles.header}>
+          <View style={[styles.header, { borderBottomColor: theme.border }]}>
             <View style={styles.headerTitleRow}>
-              <View style={styles.bellCircle}>
-                <FontAwesome5 name="bell" size={15} color="#0284C7" solid />
+              <View style={[styles.bellCircle, { backgroundColor: theme.primaryLight }]}>
+                <FontAwesome5 name="bell" size={15} color={theme.tint} solid />
               </View>
               <View>
-                <Text style={styles.headerTitle}>Central de Notificações</Text>
-                <Text style={styles.headerSub}>
+                <Text style={[styles.headerTitle, { color: theme.text }]}>Central de Notificações</Text>
+                <Text style={[styles.headerSub, { color: theme.textMuted }]}>
                   {unreadCount > 0
                     ? `${unreadCount} atualização(ões) não lida(s)`
                     : "Você está em dia com seus avisos!"}
@@ -393,7 +427,7 @@ export function NotificationsModal({
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: "rgba(15, 23, 42, 0.6)",

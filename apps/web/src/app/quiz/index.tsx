@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React, { useEffect, useState, useRef } from "react";
 import {
   ActivityIndicator,
@@ -33,6 +34,7 @@ const { width, height } = Dimensions.get("window");
 const OPTION_LETTERS = ["A", "B", "C", "D", "E"];
 
 export default function QuizScreen() {
+  const styles = useThemedStyles(baseStyles);
   const router = useRouter();
   const {
     userId,
@@ -681,7 +683,7 @@ const markdownStyles = StyleSheet.create({
   paragraph: { marginBottom: 14 },
 });
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F7F9FC" },
   centerAll: { justifyContent: "center", alignItems: "center", padding: 20 },
   loadingText: {

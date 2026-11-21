@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React, { useMemo, useEffect } from 'react';
 import {
   View,
@@ -69,6 +70,7 @@ interface StreakApiResponse {
 }
 
 export default function StreakScreen() {
+  const styles = useThemedStyles(baseStyles);
   const router = useRouter();
   const {
     currentStreak: storeCurrentStreak,
@@ -245,7 +247,7 @@ export default function StreakScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F7F9FC' },
   header: {
     flexDirection: 'row',

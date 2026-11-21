@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React from 'react';
 import {
   View,
@@ -52,6 +53,7 @@ export function ClassroomFeedTab({
   onChangeCommentInput,
   onAddComment,
 }: ClassroomFeedTabProps) {
+  const styles = useThemedStyles(baseStyles);
   return (
     <View style={styles.tabSection}>
       {/* Caixa de Novo Comunicado */}
@@ -206,7 +208,7 @@ export function ClassroomFeedTab({
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   tabSection: { padding: 16, gap: 14 },
   postBoxCard: {
     backgroundColor: AppPalette.surface,

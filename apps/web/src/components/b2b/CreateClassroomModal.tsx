@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React, { useState } from 'react';
 import {
   View,
@@ -34,6 +35,7 @@ export function CreateClassroomModal({
   onSuccess,
   onOpenCreateTeacher,
 }: CreateClassroomModalProps) {
+  const styles = useThemedStyles(baseStyles);
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [selectedTeacherId, setSelectedTeacherId] = useState<string>(
@@ -225,7 +227,7 @@ export function CreateClassroomModal({
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',

@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
@@ -266,6 +267,7 @@ const INITIAL_MATERIALS_DB: Material[] = [
 ];
 
 export default function MaterialsScreen() {
+  const styles = useThemedStyles(baseStyles);
   const router = useRouter();
   const queryClient = useQueryClient();
   const { width } = useWindowDimensions();
@@ -2197,7 +2199,7 @@ const markdownStyles = {
   },
 };
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
   header: {
     flexDirection: 'row',

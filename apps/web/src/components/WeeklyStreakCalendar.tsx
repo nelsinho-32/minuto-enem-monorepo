@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React, { useEffect, useRef } from 'react';
 import {
   View,
@@ -26,6 +27,7 @@ export function WeeklyStreakCalendar({
   onPress,
   compact = false,
 }: WeeklyStreakCalendarProps) {
+  const styles = useThemedStyles(baseStyles);
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
@@ -178,7 +180,7 @@ export function WeeklyStreakCalendar({
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   section: {
     marginBottom: 28,
   },

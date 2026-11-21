@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React from 'react';
 import {
   View,
@@ -41,6 +42,7 @@ export function ClassroomReadingModal({
   onClose,
   onPracticeQuiz,
 }: ClassroomReadingModalProps) {
+  const styles = useThemedStyles(baseStyles);
   return (
     <Modal
       visible={Boolean(material)}
@@ -151,7 +153,7 @@ export function ClassroomReadingModal({
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(15, 23, 42, 0.7)',

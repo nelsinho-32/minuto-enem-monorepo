@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -64,6 +65,7 @@ const STUDY_TEMPLATES = [
 ];
 
 export default function NewNoteScreen() {
+  const styles = useThemedStyles(baseStyles);
   const router = useRouter();
   const params = useLocalSearchParams<{
     title?: string;
@@ -273,7 +275,7 @@ export default function NewNoteScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
   header: {
     flexDirection: 'row',

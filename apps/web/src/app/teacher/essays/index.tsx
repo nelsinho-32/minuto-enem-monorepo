@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React, { useState } from 'react';
 import {
   View,
@@ -57,6 +58,7 @@ interface EssayItem {
 }
 
 export default function TeacherEssaysDashboardScreen() {
+  const styles = useThemedStyles(baseStyles);
   const router = useRouter();
   const { width } = useWindowDimensions();
 
@@ -362,7 +364,7 @@ export default function TeacherEssaysDashboardScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#F8FAFC',

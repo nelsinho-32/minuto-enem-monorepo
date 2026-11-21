@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React from 'react';
 import {
   Modal,
@@ -32,6 +33,7 @@ export function ConfirmModal({
   onConfirm,
   onCancel,
 }: ConfirmModalProps) {
+  const styles = useThemedStyles(baseStyles);
   if (!visible) return null;
 
   return (
@@ -77,7 +79,7 @@ export function ConfirmModal({
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(15, 23, 42, 0.6)',

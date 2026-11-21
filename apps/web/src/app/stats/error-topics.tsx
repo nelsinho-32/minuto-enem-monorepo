@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
@@ -52,6 +53,7 @@ function getDefaultSubjectMeta(subject: string) {
 }
 
 export default function ErrorTopicsScreen() {
+  const styles = useThemedStyles(baseStyles);
   const router = useRouter();
   const queryClient = useQueryClient();
   const { subject } = useLocalSearchParams<{ subject: string }>();
@@ -457,7 +459,7 @@ export default function ErrorTopicsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F7F9FC' },
   header: {
     flexDirection: 'row',

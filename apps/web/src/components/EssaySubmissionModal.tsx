@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React, { useState } from 'react';
 import {
   View,
@@ -35,6 +36,7 @@ export function EssaySubmissionModal({
   taskTopic,
   classroomId,
 }: EssaySubmissionModalProps) {
+  const styles = useThemedStyles(baseStyles);
   const { width } = useWindowDimensions();
   const queryClient = useQueryClient();
 
@@ -532,7 +534,7 @@ export function EssaySubmissionModal({
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(15, 23, 42, 0.75)',

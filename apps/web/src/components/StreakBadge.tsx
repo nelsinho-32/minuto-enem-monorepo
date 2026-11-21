@@ -1,8 +1,10 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Animated, Platform } from 'react-native';
 import { useUserStore } from '@/store/useUserStore';
 
 export function StreakBadge() {
+  const styles = useThemedStyles(baseStyles);
   const currentStreak = useUserStore((state) => state.currentStreak);
   const iceFreezes = useUserStore((state) => state.iceFreezes);
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -47,7 +49,7 @@ export function StreakBadge() {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',

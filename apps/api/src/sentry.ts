@@ -102,7 +102,9 @@ export const Handlers = {
   errorHandler: () => sentryErrorHandler,
 };
 
-// Injeta compatibilidade no próprio objeto Sentry
-(Sentry as any).Handlers = Handlers;
+// Injeta compatibilidade no objeto Sentry somente quando extensível (CJS)
+if (Object.isExtensible(Sentry)) {
+  (Sentry as any).Handlers = Handlers;
+}
 
 export { Sentry };

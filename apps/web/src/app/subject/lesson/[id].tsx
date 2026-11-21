@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
@@ -99,6 +100,7 @@ function parseVideoEntry(entry: string, fallbackTitle: string): ParsedVideoItem 
 }
 
 export default function LessonScreen() {
+  const styles = useThemedStyles(baseStyles);
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { width: windowWidth } = useWindowDimensions();
@@ -631,7 +633,7 @@ export default function LessonScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
   centerAll: { justifyContent: 'center', alignItems: 'center', padding: 20 },
   loadingText: {

@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React, { useMemo } from 'react';
 import {
   View,
@@ -92,6 +93,7 @@ export async function fetchErrorStatsFromApi(): Promise<ErrorStatsApiResponse> {
 }
 
 export default function ErrorsScreen() {
+  const styles = useThemedStyles(baseStyles);
   const router = useRouter();
   const { area } = useLocalSearchParams<{ area: string }>();
 
@@ -391,7 +393,7 @@ export default function ErrorsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F7F9FC' },
   header: {
     flexDirection: 'row',

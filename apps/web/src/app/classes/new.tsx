@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React, { useState } from 'react';
 import {
   View,
@@ -46,6 +47,7 @@ function generateRoomCode(subject: string): string {
 }
 
 export default function CreateClassroomScreen() {
+  const styles = useThemedStyles(baseStyles);
   const router = useRouter();
   const user = useUserStore((state) => state.user);
   const addClassroom = useClassroomStore((state) => state.addClassroom);
@@ -526,7 +528,7 @@ export default function CreateClassroomScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F7F9FC' },
   header: {
     flexDirection: 'row',

@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React, { useState } from 'react';
 import {
   View,
@@ -174,6 +175,7 @@ async function fetchTrailsFromApi(day: '1' | '2', userId?: string): Promise<Trai
 }
 
 export default function TrailsScreen() {
+  const styles = useThemedStyles(baseStyles);
   const router = useRouter();
   const queryClient = useQueryClient();
   const user = useUserStore((state) => state.user);
@@ -392,7 +394,7 @@ export default function TrailsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F7F9FC' },
   header: {
     flexDirection: 'row',

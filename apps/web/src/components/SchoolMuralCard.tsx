@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React, { useState } from 'react';
 import {
   View,
@@ -26,6 +27,7 @@ export interface SchoolAnnouncementItem {
 }
 
 export function SchoolMuralCard() {
+  const styles = useThemedStyles(baseStyles);
   const user = useUserStore((state) => state.user);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -185,7 +187,7 @@ export function SchoolMuralCard() {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   container: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,

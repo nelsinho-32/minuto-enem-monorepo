@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -15,6 +16,7 @@ export function RoleGuard({
   children,
   fallbackRoute = '/',
 }: RoleGuardProps) {
+  const styles = useThemedStyles(baseStyles);
   const router = useRouter();
   const { user, hasHydrated } = useUserStore();
 
@@ -70,7 +72,7 @@ export function RoleGuard({
   return <>{children}</>;
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   centerContainer: {
     flex: 1,
     backgroundColor: '#F7F9FC',

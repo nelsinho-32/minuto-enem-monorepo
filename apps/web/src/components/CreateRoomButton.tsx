@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React from 'react';
 import { TouchableOpacity, Text, StyleSheet } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
@@ -17,6 +18,7 @@ export function CreateRoomButton({
   title,
   subject,
 }: CreateRoomButtonProps) {
+  const styles = useThemedStyles(baseStyles);
   const router = useRouter();
   const role = useUserStore((state) => state.user?.role);
 
@@ -64,7 +66,7 @@ export function CreateRoomButton({
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   button: {
     flexDirection: 'row',
     alignItems: 'center',

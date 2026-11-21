@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React, { useEffect, useState, useMemo, useCallback } from "react";
 import {
   ActivityIndicator,
@@ -32,6 +33,7 @@ interface TopicItem {
 }
 
 export default function SubjectScreen() {
+  const styles = useThemedStyles(baseStyles);
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { userId } = useUserStore();
@@ -570,7 +572,7 @@ export default function SubjectScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F7F9FC" },
   centerAll: { justifyContent: "center", alignItems: "center", padding: 20 },
   loadingText: {

@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React, { useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
@@ -26,6 +27,7 @@ export function DuelProgressBar({
   opponentScore,
   opponentProgressPercent,
 }: DuelProgressBarProps) {
+  const styles = useThemedStyles(baseStyles);
   const myWidth = useSharedValue(0);
   const opponentWidth = useSharedValue(0);
   const myScoreScale = useSharedValue(1);
@@ -137,7 +139,7 @@ export function DuelProgressBar({
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   container: {
     backgroundColor: '#FFF',
     borderRadius: 18,

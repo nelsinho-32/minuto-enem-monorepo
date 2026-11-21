@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React, { useState } from 'react';
 import {
   View,
@@ -23,6 +24,7 @@ export function CreateTeacherModal({
   onClose,
   onSuccess,
 }: CreateTeacherModalProps) {
+  const styles = useThemedStyles(baseStyles);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -164,7 +166,7 @@ export function CreateTeacherModal({
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',

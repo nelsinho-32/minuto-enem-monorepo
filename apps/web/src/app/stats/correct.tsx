@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
@@ -34,6 +35,7 @@ export interface CorrectQuestionItem {
 }
 
 export default function CorrectAnswersScreen() {
+  const styles = useThemedStyles(baseStyles);
   const router = useRouter();
   const { area } = useLocalSearchParams<{ area: string }>();
 
@@ -317,7 +319,7 @@ export default function CorrectAnswersScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F7F9FC' },
   header: {
     flexDirection: 'row',

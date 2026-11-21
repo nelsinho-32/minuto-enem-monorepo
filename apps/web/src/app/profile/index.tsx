@@ -19,8 +19,16 @@ import * as ImagePicker from 'expo-image-picker';
 import { useQuery } from '@tanstack/react-query';
 import { safeAsyncStorage as AsyncStorage } from '@/services/safeStorage';
 import { useUserStore } from '@/store/useUserStore';
+import { useOfflineQueueStore } from '@/store/useOfflineQueueStore';
 import { ConfirmModal } from '@/components/ConfirmModal';
 import { api } from '@/services/api';
+import { useTheme, type ThemePreference , useThemedStyles } from '@/hooks/use-theme';
+import {
+  downloadOfflineStudyPack,
+  getOfflinePackMetadata,
+  clearOfflineStudyPack,
+  type OfflinePackMetadata,
+} from '@/services/offlinePack';
 
 interface UserProfileResponse {
   id: string;
@@ -114,6 +122,7 @@ async function assetToPersistentDataUri(
 }
 
 export default function ProfileScreen() {
+  const styles = useThemedStyles(baseStyles);
   const router = useRouter();
   const {
     user: storeUser,
@@ -141,6 +150,56 @@ export default function ProfileScreen() {
   const [draftCourse, setDraftCourse] = useState(targetCourse || 'Medicina');
   const [draftScore, setDraftScore] = useState(String(targetScore || 780));
   const [draftBio, setDraftBio] = useState(bio || 'Focado na aprovação no ENEM!');
+
+  // Tema opcional (Claro / Escuro / Sistema) + Pacote Offline
+  const theme = useTheme();
+  const offlineQueueCount = useOfflineQueueStore((s) => s.queue.length);
+  const flushOfflineQueue = useOfflineQueueStore((s) => s.flushQueue);
+  const [offlineMeta, setOfflineMeta] = useState<OfflinePackMetadata | null>(null);
+  const [isDownloadingOffline, setIsDownloadingOffline] = useState(false);
+  const [isSyncingOffline, setIsSyncingOffline] = useState(false);
+
+  useEffect(() => {
+    getOfflinePackMetadata().then(setOfflineMeta).catch(() => {});
+  }, []);
+
+  const handleDownloadOfflinePack = async () => {
+    setIsDownloadingOffline(true);
+    try {
+      const meta = await downloadOfflineStudyPack(80);
+      setOfflineMeta(meta);
+      Alert.alert(
+        'Pacote Offline Baixado!',
+        `${meta.questionsCount} questões reais do ENEM e ${meta.subjectsCount} matérias (${meta.sizeKb} KB) estão prontas para estudo sem internet.`
+      );
+    } catch {
+      Alert.alert(
+        'Sem conexão',
+        'Conecte-se à internet para baixar o pacote de estudo offline.'
+      );
+    } finally {
+      setIsDownloadingOffline(false);
+    }
+  };
+
+  const handleSyncOfflineNow = async () => {
+    setIsSyncingOffline(true);
+    try {
+      const res = await flushOfflineQueue();
+      if (res.syncedCount > 0) {
+        Alert.alert(
+          'Sincronizado!',
+          `${res.syncedCount} atividade(s) offline foram sincronizadas com o servidor.`
+        );
+      } else {
+        Alert.alert('Tudo em dia', 'Não há respostas pendentes de sincronização.');
+      }
+    } catch {
+      Alert.alert('Erro', 'Não foi possível sincronizar agora. Tente novamente mais tarde.');
+    } finally {
+      setIsSyncingOffline(false);
+    }
+  };
 
   const effectiveUserId = storeUser?.id || userId || 'default';
   const localAvatarKey = `@minuto_enem:local_avatar_${effectiveUserId}`;
@@ -402,16 +461,21 @@ export default function ProfileScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       {/* HEADER */}
-      <View style={styles.header}>
+      <View
+        style={[
+          styles.header,
+          { backgroundColor: theme.surface, borderBottomColor: theme.border },
+        ]}
+      >
         <TouchableOpacity
           onPress={() => router.back()}
           style={styles.backButton}
         >
-          <FontAwesome5 name="arrow-left" size={18} color="#1E293B" />
+          <FontAwesome5 name="arrow-left" size={18} color={theme.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Meu Perfil</Text>
+        <Text style={[styles.headerTitle, { color: theme.text }]}>Meu Perfil</Text>
         <View style={styles.headerRightActions}>
           <TouchableOpacity
             style={styles.iconActionBtn}
@@ -438,7 +502,12 @@ export default function ProfileScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* 1. HERO CARD DO PERFIL COM FOTO SALVA LOCALMENTE */}
-        <View style={styles.heroCard}>
+        <View
+          style={[
+            styles.heroCard,
+            { backgroundColor: theme.surface, borderColor: theme.border },
+          ]}
+        >
           <View style={styles.heroBannerBg} />
 
           <View style={styles.heroContent}>
@@ -525,18 +594,211 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+        {/* 1B. APARÊNCIA — MODO CLARO / ESCURO / SISTEMA (OPCIONAL) */}
+        <View
+          style={[
+            styles.goalCard,
+            { backgroundColor: theme.surface, borderColor: theme.border },
+          ]}
+        >
+          <View style={styles.goalHeaderRow}>
+            <View style={styles.goalTitleGroup}>
+              <View
+                style={[
+                  styles.goalIconBox,
+                  { backgroundColor: theme.isDark ? '#1E3A8A' : '#E0F2FE' },
+                ]}
+              >
+                <FontAwesome5
+                  name={theme.isDark ? 'moon' : 'sun'}
+                  size={15}
+                  color={theme.isDark ? '#FBBF24' : '#0284C7'}
+                />
+              </View>
+              <View>
+                <Text style={[styles.goalCardTitle, { color: theme.text }]}>
+                  Aparência do Aplicativo
+                </Text>
+                <Text style={[styles.goalCardSub, { color: theme.textMuted }]}>
+                  Escolha entre modo claro, escuro ou automático do sistema
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+            {(
+              [
+                { key: 'light', label: 'Claro', icon: 'sun' },
+                { key: 'dark', label: 'Escuro', icon: 'moon' },
+                { key: 'system', label: 'Sistema', icon: 'adjust' },
+              ] as Array<{ key: ThemePreference; label: string; icon: string }>
+            ).map((opt) => {
+              const isActive = theme.themePreference === opt.key;
+              return (
+                <TouchableOpacity
+                  key={opt.key}
+                  onPress={() => theme.setThemePreference(opt.key)}
+                  activeOpacity={0.8}
+                  style={{
+                    flex: 1,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6,
+                    paddingVertical: 10,
+                    borderRadius: 12,
+                    borderWidth: 1.5,
+                    borderColor: isActive ? theme.primary : theme.border,
+                    backgroundColor: isActive
+                      ? theme.isDark
+                        ? '#0C4A6E'
+                        : '#E0F2FE'
+                      : theme.surfaceMuted,
+                  }}
+                >
+                  <FontAwesome5
+                    name={opt.icon}
+                    size={13}
+                    color={isActive ? theme.tint : theme.textMuted}
+                  />
+                  <Text
+                    style={{
+                      fontSize: 12.5,
+                      fontWeight: '800',
+                      color: isActive ? theme.tint : theme.textSecondary,
+                    }}
+                  >
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* 1C. MODO OFFLINE & SINCRONIZAÇÃO AUTOMÁTICA */}
+        <View
+          style={[
+            styles.goalCard,
+            { backgroundColor: theme.surface, borderColor: theme.border },
+          ]}
+        >
+          <View style={styles.goalHeaderRow}>
+            <View style={styles.goalTitleGroup}>
+              <View
+                style={[
+                  styles.goalIconBox,
+                  { backgroundColor: theme.isDark ? '#064E3B' : '#DCFCE7' },
+                ]}
+              >
+                <FontAwesome5 name="cloud-download-alt" size={15} color="#16A34A" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.goalCardTitle, { color: theme.text }]}>
+                  Estudo Offline & Sincronização
+                </Text>
+                <Text style={[styles.goalCardSub, { color: theme.textMuted }]}>
+                  {offlineMeta
+                    ? `${offlineMeta.questionsCount} questões salvas (${offlineMeta.sizeKb} KB) • ${offlineQueueCount} pendente(s)`
+                    : `Baixe questões no Wi-Fi para estudar sem internet • ${offlineQueueCount} pendente(s)`}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+            <TouchableOpacity
+              onPress={handleDownloadOfflinePack}
+              disabled={isDownloadingOffline}
+              activeOpacity={0.85}
+              style={{
+                flex: 1,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                paddingVertical: 10,
+                borderRadius: 12,
+                backgroundColor: theme.primary,
+              }}
+            >
+              {isDownloadingOffline ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <FontAwesome5 name="download" size={12} color="#FFF" />
+              )}
+              <Text style={{ color: '#FFF', fontSize: 12.5, fontWeight: '800' }}>
+                {offlineMeta ? 'Atualizar Pacote' : 'Baixar Pacote (80q)'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={handleSyncOfflineNow}
+              disabled={isSyncingOffline}
+              activeOpacity={0.85}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                paddingHorizontal: 14,
+                paddingVertical: 10,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: theme.border,
+                backgroundColor: theme.surfaceMuted,
+              }}
+            >
+              {isSyncingOffline ? (
+                <ActivityIndicator size="small" color={theme.primary} />
+              ) : (
+                <FontAwesome5 name="sync-alt" size={12} color={theme.text} />
+              )}
+              <Text style={{ color: theme.text, fontSize: 12.5, fontWeight: '800' }}>
+                Sincronizar
+              </Text>
+            </TouchableOpacity>
+
+            {offlineMeta && (
+              <TouchableOpacity
+                onPress={async () => {
+                  await clearOfflineStudyPack();
+                  setOfflineMeta(null);
+                }}
+                style={{
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  paddingHorizontal: 12,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                  backgroundColor: theme.surfaceMuted,
+                }}
+              >
+                <FontAwesome5 name="trash-alt" size={12} color="#DC2626" />
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+
         {/* 2. CARD: MEU OBJETIVO NO ENEM (CURSO & META DE NOTA) */}
-        <View style={styles.goalCard}>
+        <View
+          style={[
+            styles.goalCard,
+            { backgroundColor: theme.surface, borderColor: theme.border },
+          ]}
+        >
           <View style={styles.goalHeaderRow}>
             <View style={styles.goalTitleGroup}>
               <View style={styles.goalIconBox}>
                 <FontAwesome5 name="bullseye" size={15} color="#7C3AED" />
               </View>
               <View>
-                <Text style={styles.goalCardTitle}>
+                <Text style={[styles.goalCardTitle, { color: theme.text }]}>
                   Foco ENEM: {targetCourse || 'Medicina'}
                 </Text>
-                <Text style={styles.goalCardSub}>
+                <Text style={[styles.goalCardSub, { color: theme.textMuted }]}>
                   Meta TRI: {targetScore || 780} pts • Atual: {triEstimate} pts
                 </Text>
               </View>
@@ -961,7 +1223,7 @@ export default function ProfileScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
   header: {
     flexDirection: 'row',

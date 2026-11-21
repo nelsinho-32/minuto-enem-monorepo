@@ -27,6 +27,7 @@ import {
   getSubjectVisualTheme as getSubjectTheme,
   type EnemAreaFilter as AreaFilter,
 } from "@/constants/theme";
+import { useTheme , useThemedStyles } from "@/hooks/use-theme";
 
 type HomeTab = "INICIO" | "MATERIAS" | "TURMA";
 
@@ -38,7 +39,9 @@ function getGreeting(): string {
 }
 
 export default function HomeScreen() {
+  const styles = useThemedStyles(baseStyles);
   const router = useRouter();
+  const theme = useTheme();
   const {
     user,
     currentStreak,
@@ -198,11 +201,19 @@ export default function HomeScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: theme.background }]}
+      edges={["top", "left", "right"]}
+    >
       {/* ======================================================== */}
       {/* 1. CABEÇALHO LIMPO E MODERNO                             */}
       {/* ======================================================== */}
-      <View style={styles.header}>
+      <View
+        style={[
+          styles.header,
+          { backgroundColor: theme.surface, borderBottomColor: theme.border },
+        ]}
+      >
         <View style={styles.headerLeft}>
           <Image
             source={require("@/assets/images/name-logo.png")}
@@ -215,6 +226,7 @@ export default function HomeScreen() {
           <TouchableOpacity
             style={[
               styles.headerIconButton,
+              { backgroundColor: theme.surfaceMuted },
               showSearch && styles.headerIconButtonActive,
             ]}
             activeOpacity={0.7}
@@ -226,13 +238,32 @@ export default function HomeScreen() {
             <FontAwesome5
               name="search"
               size={15}
-              color={showSearch ? "#0284C7" : "#334155"}
+              color={showSearch ? "#0284C7" : theme.textSecondary}
             />
           </TouchableOpacity>
 
           <TouchableOpacity
             style={[
               styles.headerIconButton,
+              { backgroundColor: theme.surfaceMuted },
+            ]}
+            activeOpacity={0.7}
+            onPress={theme.toggleDarkMode}
+            accessibilityLabel={
+              theme.isDark ? "Mudar para modo claro" : "Mudar para modo escuro"
+            }
+          >
+            <FontAwesome5
+              name={theme.isDark ? "sun" : "moon"}
+              size={15}
+              color={theme.isDark ? "#F59E0B" : theme.textSecondary}
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.headerIconButton,
+              { backgroundColor: theme.surfaceMuted },
               showNotifications && styles.headerIconButtonActive,
             ]}
             activeOpacity={0.7}
@@ -244,7 +275,7 @@ export default function HomeScreen() {
             <FontAwesome5
               name="bell"
               size={16}
-              color={showNotifications ? "#0284C7" : "#334155"}
+              color={showNotifications ? "#0284C7" : theme.textSecondary}
             />
             {unreadNotificationsCount > 0 && (
               <View style={styles.notificationDot} />
@@ -427,6 +458,37 @@ export default function HomeScreen() {
                 <FontAwesome5 name="chevron-right" size={13} color="#8E44AD" />
               </TouchableOpacity>
             )}
+
+            {/* Atalho Simulado Oficial Cronometrado + Simulador SISU */}
+            <TouchableOpacity
+              style={[
+                styles.b2bCard,
+                {
+                  borderColor: theme.isDark ? "#1E3A8A" : "#BAE6FD",
+                  backgroundColor: theme.isDark ? "#1E293B" : "#F0F9FF",
+                },
+              ]}
+              activeOpacity={0.85}
+              onPress={() => router.push("/simulado" as any)}
+            >
+              <View style={[styles.b2bIconBox, { backgroundColor: "#0284C7" }]}>
+                <FontAwesome5 name="stopwatch" size={16} color="#FFF" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={[
+                    styles.b2bTitle,
+                    { color: theme.isDark ? "#38BDF8" : "#0369A1" },
+                  ]}
+                >
+                  Simulado Oficial ENEM + Simulador SISU
+                </Text>
+                <Text style={[styles.b2bSub, { color: theme.textMuted }]}>
+                  Prova cronometrada (Dia 1, Dia 2 ou Express), cartão-resposta e nota TRI.
+                </Text>
+              </View>
+              <FontAwesome5 name="chevron-right" size={13} color={theme.tint} />
+            </TouchableOpacity>
 
             {/* Mural de Avisos e Notícias em Destaque na Home */}
             <View style={{ marginBottom: 16 }}>
@@ -803,7 +865,12 @@ export default function HomeScreen() {
       {/* ======================================================== */}
       {/* BARRA DE NAVEGAÇÃO INFERIOR (PADRÃO DE MERCADO)          */}
       {/* ======================================================== */}
-      <View style={styles.bottomTabBar}>
+      <View
+        style={[
+          styles.bottomTabBar,
+          { backgroundColor: theme.surface, borderTopColor: theme.border },
+        ]}
+      >
         <TouchableOpacity
           style={styles.bottomTabItem}
           onPress={() => setActiveTab("INICIO")}
@@ -886,7 +953,7 @@ export default function HomeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F8FAFC" },
   header: {
     flexDirection: "row",

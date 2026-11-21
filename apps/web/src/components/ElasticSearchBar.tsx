@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React, { useState, useEffect, useMemo } from "react";
 import {
   View,
@@ -172,6 +173,7 @@ export function ElasticSearchBar({
   autoFocus = true,
   onNavigate,
 }: ElasticSearchBarProps) {
+  const styles = useThemedStyles(baseStyles);
   const router = useRouter();
   const [activeScope, setActiveScope] = useState<ElasticScope>("ALL");
   const [remoteItems, setRemoteItems] = useState<ElasticSuggestionItem[]>([]);
@@ -606,7 +608,7 @@ export function ElasticSearchBar({
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   wrapper: {
     marginHorizontal: 20,
     marginBottom: 14,

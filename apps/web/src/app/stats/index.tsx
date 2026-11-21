@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React, { useMemo } from 'react';
 import {
   View,
@@ -59,6 +60,7 @@ function formatSeconds(totalSeconds: number): string {
 }
 
 export default function StatsScreen() {
+  const styles = useThemedStyles(baseStyles);
   const router = useRouter();
 
   const {
@@ -376,7 +378,7 @@ export default function StatsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F7F9FC' },
   header: {
     flexDirection: 'row',

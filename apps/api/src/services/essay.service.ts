@@ -8,6 +8,7 @@ import {
 import { prisma } from "../lib/prisma";
 import { AppError } from "../errors/AppError";
 import { storageService } from "./storage.service";
+import { realtimeNotificationService } from "./realtime-notification.service";
 
 export interface SubmitEssayParams {
   taskId: string;
@@ -428,6 +429,16 @@ export class EssayService {
       data: {
         xp: { increment: xpBonus },
       },
+    });
+
+    // Notifica o aluno em tempo real via Socket.IO / Expo Push
+    realtimeNotificationService.notifyUser(existingEssay.studentId, {
+      type: "ESSAY_GRADED",
+      title: `Redação corrigida: ${finalScore}/1000 pontos!`,
+      body: `Seu professor avaliou "${existingEssay.task.title}" na Oficina Nota 1000 (+${xpBonus} XP).`,
+      route: existingEssay.task.classroomId
+        ? `/classes/${existingEssay.task.classroomId}`
+        : "/classes",
     });
 
     return updatedEssay;

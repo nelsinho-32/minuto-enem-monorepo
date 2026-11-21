@@ -1,3 +1,4 @@
+import { useThemedStyles } from '@/hooks/use-theme';
 import React, { useState } from 'react';
 import {
   View,
@@ -21,6 +22,7 @@ interface AuthResponse {
 }
 
 export default function RegisterScreen() {
+  const styles = useThemedStyles(baseStyles);
   const router = useRouter();
   const setAuth = useUserStore((state) => state.setAuth);
 
@@ -331,7 +333,7 @@ export default function RegisterScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F7F9FC' },
   scrollContent: { padding: 24, paddingBottom: 40, justifyContent: 'center' },
   card: { backgroundColor: '#FFF', padding: 24, borderRadius: 20, gap: 14, borderWidth: 1, borderColor: '#E2E8F0' },

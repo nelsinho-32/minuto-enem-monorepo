@@ -13,6 +13,7 @@ import Markdown from 'react-native-markdown-display';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { BASE_URL } from '@/services/api';
 import { AppPalette } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 
 const LOCAL_ENEM_YEARS = new Set([
   '2009',
@@ -324,15 +325,17 @@ export function QuestionContentRenderer({
   text,
   compact = false,
   fontSize = 16,
-  textColor = '#334155',
+  textColor,
 }: QuestionContentRendererProps) {
+  const theme = useTheme();
+  const resolvedTextColor = textColor || theme.textSecondary;
   const segments = useMemo(() => splitMarkdownSegments(text), [text]);
 
   const mdStyles = useMemo(
     () => ({
       body: {
         fontSize,
-        color: textColor,
+        color: resolvedTextColor,
         lineHeight: Math.round(fontSize * 1.6),
       },
       paragraph: {
@@ -341,22 +344,22 @@ export function QuestionContentRenderer({
       },
       strong: {
         fontWeight: '800' as const,
-        color: '#0F172A',
+        color: theme.text,
       },
       em: {
         fontStyle: 'italic' as const,
-        color: '#475569',
+        color: theme.textMuted,
       },
       blockquote: {
-        backgroundColor: '#F8FAFC',
+        backgroundColor: theme.surfaceMuted,
         borderLeftWidth: 3,
-        borderLeftColor: '#0284C7',
+        borderLeftColor: theme.primary,
         paddingHorizontal: 12,
         paddingVertical: 6,
         marginVertical: 8,
       },
     }),
-    [fontSize, textColor, compact]
+    [fontSize, resolvedTextColor, compact, theme.text, theme.textMuted, theme.surfaceMuted, theme.primary]
   );
 
   if (segments.length === 0) {

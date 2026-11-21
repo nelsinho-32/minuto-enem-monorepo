@@ -1,6 +1,7 @@
 import { ChatRoomType } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { AppError } from "../errors/AppError";
+import { realtimeNotificationService } from "./realtime-notification.service";
 
 export const VALID_CHAT_CATEGORIES = ["GERAL", "DUVIDA", "MACETE", "QUESTAO"] as const;
 export type ChatCategoryType = (typeof VALID_CHAT_CATEGORIES)[number];
@@ -362,7 +363,7 @@ export class ChatService {
       throw new AppError("A mensagem excede o limite de 2000 caracteres.", 400);
     }
 
-    await this.assertRoomAccess(roomId, senderId);
+    const room = await this.assertRoomAccess(roomId, senderId);
 
     const normalizedCategory = VALID_CHAT_CATEGORIES.includes(
       (category || "").toUpperCase() as ChatCategoryType
@@ -389,6 +390,21 @@ export class ChatService {
       where: { id: roomId },
       data: { updatedAt: new Date() },
     });
+
+    // Notifica destinatários em tempo real quando for mensagem direta (DM)
+    if (room.type === ChatRoomType.DIRECT) {
+      const recipientIds = room.participants
+        .map((p) => p.id)
+        .filter((id) => id !== senderId);
+      if (recipientIds.length > 0) {
+        realtimeNotificationService.notifyUsers(recipientIds, {
+          type: "NEW_MESSAGE",
+          title: `Nova mensagem de ${created.sender.name}`,
+          body: cleanContent.slice(0, 100),
+          route: "/chat",
+        });
+      }
+    }
 
     return {
       id: created.id,
