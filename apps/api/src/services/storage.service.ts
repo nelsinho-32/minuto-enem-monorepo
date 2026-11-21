@@ -79,6 +79,12 @@ async function prepareUploadFile(
     else if (file.mimetype === "image/png") ext = ".png";
     else if (file.mimetype === "image/webp") ext = ".webp";
     else if (file.mimetype?.startsWith("image/")) ext = ".jpg";
+    else if (file.mimetype === "audio/webm") ext = ".webm";
+    else if (file.mimetype === "audio/mpeg" || file.mimetype === "audio/mp3") ext = ".mp3";
+    else if (file.mimetype === "audio/mp4" || file.mimetype === "audio/m4a" || file.mimetype === "audio/x-m4a") ext = ".m4a";
+    else if (file.mimetype === "audio/wav" || file.mimetype === "audio/x-wav") ext = ".wav";
+    else if (file.mimetype === "audio/ogg") ext = ".ogg";
+    else if (file.mimetype?.startsWith("audio/")) ext = ".webm";
   }
 
   if (options.allowedExtensions && options.allowedExtensions.length > 0) {

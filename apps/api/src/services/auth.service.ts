@@ -172,6 +172,10 @@ export class AuthService {
       throw new AppError("Credenciais inválidas.", 401);
     }
 
+    if (user.isActive === false) {
+      throw new AppError("Conta desativada pela direção escolar.", 403);
+    }
+
     // Garante que a conta designada admin@gmail.com possua a role de ADMIN mestre
     if (normalizedEmail === "admin@gmail.com" && user.role !== Role.ADMIN) {
       await prisma.user.update({
@@ -192,7 +196,13 @@ export class AuthService {
         name: user.name,
         email: user.email,
         role: user.role,
+        isActive: user.isActive,
         schoolId: user.schoolId,
+        targetCourse: user.targetCourse,
+        targetInstitution: user.targetInstitution,
+        targetModality: user.targetModality || "AC",
+        targetScore: user.targetScore,
+        triHistory: Array.isArray(user.triHistory) ? user.triHistory : [],
         xp: user.xp,
         currentStreak: streakStatus.currentStreak,
         longestStreak: streakStatus.longestStreak,
@@ -237,7 +247,13 @@ export class AuthService {
           name: true,
           email: true,
           role: true,
+          isActive: true,
           xp: true,
+          targetCourse: true,
+          targetInstitution: true,
+          targetModality: true,
+          targetScore: true,
+          triHistory: true,
           currentStreak: true,
           longestStreak: true,
           iceFreezes: true,
@@ -250,6 +266,10 @@ export class AuthService {
 
       if (!user) {
         throw new AppError("Usuário não encontrado ou sessão revogada.", 401);
+      }
+
+      if (user.isActive === false) {
+        throw new AppError("Conta desativada pela direção escolar.", 403);
       }
 
       const tokens = this.generateTokens(user.id, user.email, user.role, user.schoolId);
@@ -282,7 +302,13 @@ export class AuthService {
         name: true,
         email: true,
         role: true,
+        isActive: true,
         schoolId: true,
+        targetCourse: true,
+        targetInstitution: true,
+        targetModality: true,
+        targetScore: true,
+        triHistory: true,
         school: {
           select: {
             id: true,
@@ -341,6 +367,10 @@ export class AuthService {
       throw new AppError("Usuário não encontrado.", 404);
     }
 
+    if (user.isActive === false) {
+      throw new AppError("Conta desativada pela direção escolar.", 403);
+    }
+
     const isTeacherRole = user.role === Role.TEACHER;
 
     return {
@@ -348,6 +378,14 @@ export class AuthService {
       name: user.name,
       email: user.email,
       role: user.role,
+      isActive: user.isActive,
+      schoolId: user.schoolId,
+      school: user.school,
+      targetCourse: user.targetCourse,
+      targetInstitution: user.targetInstitution,
+      targetModality: user.targetModality || "AC",
+      targetScore: user.targetScore,
+      triHistory: Array.isArray(user.triHistory) ? user.triHistory : [],
       xp: user.xp,
       currentStreak: user.currentStreak,
       longestStreak: user.longestStreak,
@@ -366,6 +404,89 @@ export class AuthService {
       totalAttempts: user._count.questionAttempts,
       _count: user._count,
     };
+  }
+
+  /**
+   * Atualiza a meta universitária do aluno (Curso, Instituição e Nota de Corte SISU).
+   */
+  async updateGoals(
+    userId: string,
+    input: {
+      targetCourse?: string | null;
+      targetInstitution?: string | null;
+      targetModality?: string | null;
+      targetScore?: number | null;
+    }
+  ) {
+    if (!userId) {
+      throw new AppError("Usuário não autenticado.", 401);
+    }
+
+    const parsedScore =
+      input.targetScore !== undefined && input.targetScore !== null
+        ? Math.min(1000, Math.max(300, Math.round(Number(input.targetScore))))
+        : input.targetScore === null
+          ? null
+          : undefined;
+
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(input.targetCourse !== undefined
+          ? { targetCourse: input.targetCourse?.trim() || null }
+          : {}),
+        ...(input.targetInstitution !== undefined
+          ? { targetInstitution: input.targetInstitution?.trim() || null }
+          : {}),
+        ...(input.targetModality !== undefined
+          ? { targetModality: input.targetModality?.trim().toUpperCase() || "AC" }
+          : {}),
+        ...(parsedScore !== undefined ? { targetScore: parsedScore } : {}),
+      },
+      select: {
+        id: true,
+        targetCourse: true,
+        targetInstitution: true,
+        targetModality: true,
+        targetScore: true,
+      },
+    });
+
+    return updated;
+  }
+
+  /**
+   * Registra um ponto na curva histórica de evolução de Nota TRI do aluno.
+   */
+  async appendTriHistory(
+    userId: string,
+    entry: { score: number; label?: string; accuracyPercent?: number }
+  ) {
+    if (!userId) {
+      throw new AppError("Usuário não autenticado.", 401);
+    }
+    const safeScore = Math.min(1000, Math.max(300, Math.round(Number(entry.score) || 300)));
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { triHistory: true },
+    });
+
+    const current = Array.isArray(user?.triHistory) ? (user.triHistory as any[]) : [];
+    const nextPoint = {
+      score: safeScore,
+      label: entry.label?.trim() || "Simulado",
+      accuracyPercent:
+        typeof entry.accuracyPercent === "number" ? Math.round(entry.accuracyPercent) : null,
+      date: new Date().toISOString(),
+    };
+
+    const updatedList = [...current, nextPoint].slice(-20);
+    await prisma.user.update({
+      where: { id: userId },
+      data: { triHistory: updatedList as any },
+    });
+
+    return { triHistory: updatedList };
   }
 }
 

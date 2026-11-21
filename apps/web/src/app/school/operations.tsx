@@ -17,6 +17,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { api, BASE_URL } from '@/services/api';
 import { useTheme } from '@/hooks/use-theme';
 import { useUserStore } from '@/store/useUserStore';
+import { RoleGuard } from '@/components/RoleGuard';
 
 interface InstitutionalExamItem {
   id: string;
@@ -43,13 +44,36 @@ interface DropoutAlert {
   reasons: string[];
 }
 
+interface SchoolUserPermissionItem {
+  id: string;
+  name: string;
+  email: string;
+  role: 'TEACHER' | 'STUDENT';
+  isActive: boolean;
+  xp: number;
+  currentStreak: number;
+}
+
 export default function SchoolOperationsScreen() {
   const router = useRouter();
   const theme = useTheme();
   const token = useUserStore((s) => s.token);
 
-  const [activeTab, setActiveTab] = useState<'EXAMS' | 'IMPORT' | 'ALERTS'>('EXAMS');
+  const [activeTab, setActiveTab] = useState<'EXAMS' | 'IMPORT' | 'ALERTS' | 'PERMISSIONS' | 'AUDIT'>('EXAMS');
   const [isLoading, setIsLoading] = useState(true);
+  const [schoolUsers, setSchoolUsers] = useState<SchoolUserPermissionItem[]>([]);
+  const [auditLogs, setAuditLogs] = useState<
+    Array<{
+      id: string;
+      actorName: string;
+      action: string;
+      targetType: string;
+      details?: Record<string, any>;
+      createdAt: string;
+    }>
+  >([]);
+  const [userSearch, setUserSearch] = useState('');
+  const [togglingUserId, setTogglingUserId] = useState<string | null>(null);
 
   // Simulados Institucionais
   const [exams, setExams] = useState<InstitutionalExamItem[]>([]);
@@ -75,17 +99,21 @@ export default function SchoolOperationsScreen() {
   const loadAll = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [examRes, alertRes] = await Promise.all([
+      const [examRes, alertRes, usersRes, auditRes] = await Promise.all([
         api.get<InstitutionalExamItem[]>('/institutional-exams').catch(() => []),
         api
           .get<{ totalMonitoredStudents: number; alerts: DropoutAlert[] }>(
             '/schools/me/dropout-alerts'
           )
           .catch(() => ({ totalMonitoredStudents: 0, alerts: [] })),
+        api.get<SchoolUserPermissionItem[]>('/schools/me/users').catch(() => []),
+        api.get<any[]>('/schools/me/audit-logs').catch(() => []),
       ]);
       setExams(Array.isArray(examRes) ? examRes : []);
       setAlerts(Array.isArray(alertRes?.alerts) ? alertRes.alerts : []);
       setMonitoredCount(alertRes?.totalMonitoredStudents || 0);
+      setSchoolUsers(Array.isArray(usersRes) ? usersRes : []);
+      setAuditLogs(Array.isArray(auditRes) ? auditRes : []);
     } finally {
       setIsLoading(false);
     }
@@ -188,6 +216,7 @@ export default function SchoolOperationsScreen() {
   };
 
   return (
+    <RoleGuard allowedRoles={['SCHOOL', 'ADMIN']}>
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <View
         style={[
@@ -218,6 +247,8 @@ export default function SchoolOperationsScreen() {
           { key: 'EXAMS', label: 'Simulados', icon: 'file-signature' },
           { key: 'IMPORT', label: 'Importar', icon: 'users-cog' },
           { key: 'ALERTS', label: `Alertas (${alerts.length})`, icon: 'exclamation-triangle' },
+          { key: 'PERMISSIONS', label: 'Permissões', icon: 'user-shield' },
+          { key: 'AUDIT', label: 'Auditoria', icon: 'history' },
         ].map((t) => {
           const active = activeTab === t.key;
           return (
@@ -594,9 +625,228 @@ export default function SchoolOperationsScreen() {
               )}
             </>
           )}
+
+          {activeTab === 'PERMISSIONS' && (
+            <>
+              <View
+                style={[
+                  styles.card,
+                  { backgroundColor: theme.surface, borderColor: theme.border },
+                ]}
+              >
+                <Text style={[styles.cardTitle, { color: theme.text }]}>
+                  Gestão de Permissões & Acessos ({schoolUsers.length})
+                </Text>
+                <Text style={{ fontSize: 12.5, color: theme.textMuted, marginBottom: 10 }}>
+                  Ative ou desative rapidamente o login de professores e alunos vinculados à escola.
+                </Text>
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: theme.surfaceMuted,
+                      borderColor: theme.border,
+                      color: theme.text,
+                    },
+                  ]}
+                  placeholder="Buscar por nome ou e-mail..."
+                  placeholderTextColor={theme.textMuted}
+                  value={userSearch}
+                  onChangeText={setUserSearch}
+                />
+              </View>
+
+              {schoolUsers
+                .filter((u) => {
+                  const q = userSearch.trim().toLowerCase();
+                  if (!q) return true;
+                  return (
+                    u.name.toLowerCase().includes(q) ||
+                    u.email.toLowerCase().includes(q) ||
+                    u.role.toLowerCase().includes(q)
+                  );
+                })
+                .map((u) => (
+                  <View
+                    key={u.id}
+                    style={[
+                      styles.card,
+                      {
+                        backgroundColor: theme.surface,
+                        borderColor: u.isActive ? theme.border : '#EF4444',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 10,
+                      },
+                    ]}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Text style={{ color: theme.text, fontWeight: '800', fontSize: 14 }}>
+                          {u.name}
+                        </Text>
+                        <View
+                          style={{
+                            paddingHorizontal: 7,
+                            paddingVertical: 2,
+                            borderRadius: 6,
+                            backgroundColor: u.role === 'TEACHER' ? '#EDE9FE' : '#E0F2FE',
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 10,
+                              fontWeight: '800',
+                              color: u.role === 'TEACHER' ? '#6D28D9' : '#0369A1',
+                            }}
+                          >
+                            {u.role === 'TEACHER' ? 'Professor' : 'Aluno'}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 2 }}>
+                        {u.email}
+                      </Text>
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          fontWeight: '700',
+                          marginTop: 4,
+                          color: u.isActive ? '#16A34A' : '#DC2626',
+                        }}
+                      >
+                        {u.isActive ? 'Acesso Ativo' : 'Acesso Desativado'}
+                      </Text>
+                    </View>
+
+                    <TouchableOpacity
+                      disabled={togglingUserId === u.id}
+                      onPress={async () => {
+                        setTogglingUserId(u.id);
+                        try {
+                          const nextStatus = !u.isActive;
+                          await api.patch(`/schools/me/users/${u.id}/status`, {
+                            isActive: nextStatus,
+                          });
+                          setSchoolUsers((prev) =>
+                            prev.map((item) =>
+                              item.id === u.id ? { ...item, isActive: nextStatus } : item
+                            )
+                          );
+                        } catch (err: any) {
+                          Alert.alert('Erro', err?.message || 'Não foi possível atualizar status.');
+                        } finally {
+                          setTogglingUserId(null);
+                        }
+                      }}
+                      style={{
+                        paddingHorizontal: 12,
+                        paddingVertical: 8,
+                        borderRadius: 10,
+                        backgroundColor: u.isActive ? '#FEE2E2' : '#DCFCE7',
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontWeight: '800',
+                          color: u.isActive ? '#DC2626' : '#15803D',
+                        }}
+                      >
+                        {togglingUserId === u.id
+                          ? 'Salvando...'
+                          : u.isActive
+                            ? 'Desativar'
+                            : 'Reativar'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+            </>
+          )}
+
+          {activeTab === 'AUDIT' && (
+            <>
+              <View
+                style={[
+                  styles.card,
+                  { backgroundColor: theme.surface, borderColor: theme.border },
+                ]}
+              >
+                <Text style={[styles.cardTitle, { color: theme.text }]}>
+                  Log de Auditoria Escolar ({auditLogs.length})
+                </Text>
+                <Text style={{ fontSize: 12.5, color: theme.textMuted }}>
+                  Registro automático de alterações de permissões, transferências de professores e remanejamentos de alunos.
+                </Text>
+              </View>
+
+              {auditLogs.length === 0 ? (
+                <View
+                  style={[
+                    styles.card,
+                    { backgroundColor: theme.surface, borderColor: theme.border, alignItems: 'center', paddingVertical: 24 },
+                  ]}
+                >
+                  <FontAwesome5 name="history" size={26} color={theme.textMuted} />
+                  <Text style={{ color: theme.text, fontWeight: '800', marginTop: 8 }}>
+                    Nenhum evento registrado ainda
+                  </Text>
+                </View>
+              ) : (
+                auditLogs.map((log) => {
+                  const actionLabels: Record<string, string> = {
+                    USER_DEACTIVATED: 'Conta desativada',
+                    USER_REACTIVATED: 'Conta reativada',
+                    CLASSROOM_TEACHER_TRANSFERRED: 'Transferência de titularidade de turma',
+                    STUDENTS_BATCH_REASSIGNED: 'Remanejamento em lote de alunos',
+                  };
+                  const formatted = new Date(log.createdAt).toLocaleString('pt-BR', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  });
+                  return (
+                    <View
+                      key={log.id}
+                      style={[
+                        styles.card,
+                        { backgroundColor: theme.surface, borderColor: theme.border, gap: 4 },
+                      ]}
+                    >
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Text style={{ fontSize: 13.5, fontWeight: '800', color: theme.text }}>
+                          {actionLabels[log.action] || log.action}
+                        </Text>
+                        <Text style={{ fontSize: 11, color: theme.textMuted }}>{formatted}</Text>
+                      </View>
+                      <Text style={{ fontSize: 12, color: theme.primary, fontWeight: '700' }}>
+                        Responsável: {log.actorName}
+                      </Text>
+                      {log.details && (
+                        <Text style={{ fontSize: 12, color: theme.textMuted }}>
+                          {log.details.name
+                            ? `${log.details.name} (${log.details.email || ''})`
+                            : log.details.classroomName
+                              ? `Turma ${log.details.classroomName} → Prof. ${log.details.newTeacherName}`
+                              : log.details.movedCount
+                                ? `${log.details.movedCount} aluno(s): ${log.details.fromClassroomName} → ${log.details.toClassroomName}`
+                                : JSON.stringify(log.details)}
+                        </Text>
+                      )}
+                    </View>
+                  );
+                })
+              )}
+            </>
+          )}
         </ScrollView>
       )}
     </SafeAreaView>
+    </RoleGuard>
   );
 }
 

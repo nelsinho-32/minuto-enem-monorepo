@@ -8,6 +8,8 @@ export type RealtimeNotificationType =
   | "NEW_MESSAGE"
   | "DROPOUT_ALERT"
   | "INSTITUTIONAL_EXAM"
+  | "QUESTION_FEEDBACK"
+  | "CLASSROOM_TRANSFER"
   | "SYSTEM";
 
 export interface RealtimeNotificationPayload {

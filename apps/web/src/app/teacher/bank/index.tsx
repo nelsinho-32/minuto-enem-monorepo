@@ -15,6 +15,7 @@ import { FontAwesome5 } from '@expo/vector-icons';
 import { api } from '@/services/api';
 import { useTheme } from '@/hooks/use-theme';
 import { useClassroomStore } from '@/store/useClassroomStore';
+import { RoleGuard } from '@/components/RoleGuard';
 
 interface CustomQuestion {
   id: string;
@@ -179,6 +180,7 @@ export default function TeacherBankScreen() {
   };
 
   return (
+    <RoleGuard allowedRoles={['TEACHER', 'SCHOOL', 'ADMIN']}>
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <View
         style={[
@@ -557,6 +559,7 @@ export default function TeacherBankScreen() {
         </ScrollView>
       )}
     </SafeAreaView>
+    </RoleGuard>
   );
 }
 

@@ -174,6 +174,27 @@ export class TaskController {
     }
   }
 
+  /**
+   * GET /tasks/calendar
+   */
+  async calendar(req: Request, res: Response): Promise<Response> {
+    try {
+      const user = req.user;
+      if (!user) {
+        throw new AppError("Usuário não autenticado.", 401);
+      }
+      const data = await taskService.getTaskCalendar({
+        userId: user.id,
+        role: user.role,
+        schoolId: req.schoolId || user.schoolId,
+        classroomId: typeof req.query?.classroomId === "string" ? req.query.classroomId : undefined,
+      });
+      return res.status(200).json(data);
+    } catch (error) {
+      return this.handleError(error, res);
+    }
+  }
+
   private handleError(error: unknown, res: Response): Response {
     if (error instanceof AppError) {
       return res.status(error.statusCode).json({ error: error.message });

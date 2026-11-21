@@ -49,6 +49,49 @@ export default function TeacherGradeEssayScreen() {
   const [competency4, setCompetency4] = useState<number>(120);
   const [competency5, setCompetency5] = useState<number>(120);
   const [generalFeedback, setGeneralFeedback] = useState<string>('');
+  const [newRubricTitle, setNewRubricTitle] = useState<string>('');
+  const [newRubricComp, setNewRubricComp] = useState<number>(1);
+  const [savingRubric, setSavingRubric] = useState<boolean>(false);
+
+  const DEFAULT_RUBRIC_SNIPPETS = [
+    { id: 'def-c1', competency: 1, title: 'C1: Atenção à norma culta', content: '[C1] Revisar concordância verbal/nominal e uso de crase.' },
+    { id: 'def-c2', competency: 2, title: 'C2: Repertório produtivo', content: '[C2] Excelente repertório sociocultural pertinente e articulado ao tema.' },
+    { id: 'def-c3', competency: 3, title: 'C3: Aprofundar projeto de texto', content: '[C3] Desenvolver mais a relação de causa e consequência nos argumentos.' },
+    { id: 'def-c4', competency: 4, title: 'C4: Conectivos interparágrafos', content: '[C4] Variar os operadores argumentativos no início dos parágrafos.' },
+    { id: 'def-c5', competency: 5, title: 'C5: Detalhar proposta', content: '[C5] Incluir todos os 5 elementos na intervenção: agente, ação, meio/modo, efeito e detalhamento.' },
+  ];
+
+  const { data: savedRubrics = [], refetch: refetchRubrics } = useQuery<
+    Array<{ id: string; competency: number; title: string; content: string }>
+  >({
+    queryKey: ['teacher-essay-rubrics'],
+    queryFn: () => api.get('/essays/rubrics').catch(() => []),
+  });
+
+  const handleInsertRubric = (text: string) => {
+    setGeneralFeedback((prev) => (prev.trim() ? `${prev.trim()}\n${text}` : text));
+  };
+
+  const handleSaveCurrentAsRubric = async () => {
+    if (!newRubricTitle.trim() || !generalFeedback.trim()) {
+      Alert.alert('Preencha os campos', 'Digite um título curto e um texto no feedback para salvar como rubrica.');
+      return;
+    }
+    setSavingRubric(true);
+    try {
+      await api.post('/essays/rubrics', {
+        title: newRubricTitle.trim(),
+        competency: newRubricComp,
+        content: generalFeedback.trim(),
+      });
+      setNewRubricTitle('');
+      refetchRubrics();
+    } catch (err: any) {
+      Alert.alert('Erro', err?.message || 'Não foi possível salvar a rubrica.');
+    } finally {
+      setSavingRubric(false);
+    }
+  };
 
   // Estado de zoom e correção visual direta sobre a folha (anotações/marcadores C1-C5)
   const [zoomScale, setZoomScale] = useState<number>(1);
@@ -626,17 +669,43 @@ export default function TeacherGradeEssayScreen() {
                   })}
                 </View>
 
-                {/* Campo de Comentários Gerais (generalFeedback) */}
+                {/* Campo de Comentários Gerais (generalFeedback) + Banco de Rubricas C1–C5 */}
                 <View style={styles.feedbackSection}>
                   <View style={styles.feedbackLabelRow}>
                     <FontAwesome5 name="comment-alt" size={13} color="#0284C7" style={{ marginRight: 6 }} />
                     <Text style={styles.feedbackLabel}>
-                      Comentários Pedagógicos e Feedback (generalFeedback)
+                      Comentários Pedagógicos & Banco de Rubricas (C1–C5)
                     </Text>
                   </View>
                   <Text style={styles.feedbackHint}>
-                    Explique os acertos, falhas gramaticais, repertório sociocultural e como o aluno pode aprimorar a proposta de intervenção.
+                    Toque em um comentário frequente para inserir no feedback ou salve novos trechos reutilizáveis:
                   </Text>
+
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{ gap: 6, marginBottom: 10 }}
+                  >
+                    {[...savedRubrics, ...DEFAULT_RUBRIC_SNIPPETS].map((rub) => (
+                      <TouchableOpacity
+                        key={rub.id}
+                        onPress={() => handleInsertRubric(rub.content)}
+                        style={{
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
+                          borderRadius: 999,
+                          backgroundColor: '#E0F2FE',
+                          borderWidth: 1,
+                          borderColor: '#7DD3FC',
+                        }}
+                      >
+                        <Text style={{ fontSize: 11.5, fontWeight: '800', color: '#0369A1' }}>
+                          + {rub.title}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+
                   <TextInput
                     style={styles.feedbackInput}
                     multiline
@@ -647,6 +716,30 @@ export default function TeacherGradeEssayScreen() {
                     onChangeText={setGeneralFeedback}
                     textAlignVertical="top"
                   />
+
+                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, alignItems: 'center' }}>
+                    <TextInput
+                      style={[styles.feedbackInput, { minHeight: 38, flex: 1, paddingVertical: 6 }]}
+                      placeholder="Salvar feedback atual como rubrica (título)..."
+                      placeholderTextColor="#94A3B8"
+                      value={newRubricTitle}
+                      onChangeText={setNewRubricTitle}
+                    />
+                    <TouchableOpacity
+                      disabled={savingRubric}
+                      onPress={handleSaveCurrentAsRubric}
+                      style={{
+                        backgroundColor: '#7C3AED',
+                        paddingHorizontal: 12,
+                        paddingVertical: 9,
+                        borderRadius: 10,
+                      }}
+                    >
+                      <Text style={{ color: '#FFF', fontSize: 11.5, fontWeight: '800' }}>
+                        {savingRubric ? '...' : 'Salvar Rubrica'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
 
                 {/* Botão de Salvar Correção */}

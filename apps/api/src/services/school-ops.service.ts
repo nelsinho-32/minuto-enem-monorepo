@@ -391,6 +391,326 @@ export class SchoolOpsService {
 
     return { notifiedCount: studentIds.length };
   }
+
+  /**
+   * Lista usuários (professores e alunos) pertencentes à instituição escolar
+   * para gestão de acessos e permissões.
+   */
+  async listSchoolUsers(schoolId?: string | null, roleFilter?: string, search?: string) {
+    if (!schoolId) {
+      throw new AppError("Instituição escolar não identificada.", 400);
+    }
+
+    const whereClause: any = {
+      schoolId,
+      role:
+        roleFilter === "TEACHER"
+          ? Role.TEACHER
+          : roleFilter === "STUDENT"
+            ? Role.STUDENT
+            : { in: [Role.TEACHER, Role.STUDENT] },
+    };
+
+    if (search && search.trim()) {
+      const q = search.trim();
+      whereClause.OR = [
+        { name: { contains: q, mode: "insensitive" } },
+        { email: { contains: q, mode: "insensitive" } },
+      ];
+    }
+
+    return prisma.user.findMany({
+      where: whereClause,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        isActive: true,
+        xp: true,
+        currentStreak: true,
+        lastStudyDate: true,
+        createdAt: true,
+        _count: {
+          select: {
+            createdClassrooms: true,
+            enrolledClassrooms: true,
+          },
+        },
+      },
+      orderBy: [{ role: "asc" }, { name: "asc" }],
+    });
+  }
+
+  /**
+   * Ativa ou desativa a conta de um professor ou aluno da escola.
+   */
+  async setUserActiveStatus(params: {
+    requesterId: string;
+    schoolId?: string | null;
+    targetUserId: string;
+    isActive: boolean;
+  }) {
+    if (!params.schoolId) {
+      throw new AppError("Instituição escolar não identificada.", 400);
+    }
+    if (!params.targetUserId) {
+      throw new AppError("ID do usuário é obrigatório.", 400);
+    }
+    if (params.requesterId === params.targetUserId) {
+      throw new AppError("Você não pode desativar sua própria conta.", 400);
+    }
+
+    const target = await prisma.user.findUnique({
+      where: { id: params.targetUserId },
+      select: { id: true, name: true, email: true, role: true, schoolId: true, isActive: true },
+    });
+
+    if (!target || target.schoolId !== params.schoolId) {
+      throw new AppError("Usuário não encontrado nesta instituição escolar.", 404);
+    }
+
+    if (target.role === Role.SCHOOL || target.role === Role.ADMIN) {
+      throw new AppError("Não é permitido alterar o status de gestores ou administradores por aqui.", 403);
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: target.id },
+      data: { isActive: Boolean(params.isActive) },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        isActive: true,
+      },
+    });
+
+    await this.recordAuditLog({
+      schoolId: params.schoolId,
+      actorId: params.requesterId,
+      action: params.isActive ? "USER_REACTIVATED" : "USER_DEACTIVATED",
+      targetType: target.role,
+      targetId: target.id,
+      details: { name: target.name, email: target.email, isActive: Boolean(params.isActive) },
+    });
+
+    return updated;
+  }
+
+  /**
+   * Transfere a titularidade de uma turma para outro professor da mesma escola.
+   */
+  async transferClassroomTeacher(params: {
+    requesterId?: string;
+    schoolId?: string | null;
+    classroomId: string;
+    newTeacherId: string;
+  }) {
+    if (!params.schoolId) {
+      throw new AppError("Instituição escolar não identificada.", 400);
+    }
+    if (!params.classroomId || !params.newTeacherId) {
+      throw new AppError("Turma e novo professor são obrigatórios.", 400);
+    }
+
+    const classroom = await prisma.classroom.findUnique({
+      where: { id: params.classroomId },
+      select: { id: true, name: true, code: true, schoolId: true, teacherId: true },
+    });
+
+    if (!classroom || classroom.schoolId !== params.schoolId) {
+      throw new AppError("Turma não encontrada nesta instituição escolar.", 404);
+    }
+
+    const newTeacher = await prisma.user.findUnique({
+      where: { id: params.newTeacherId },
+      select: { id: true, name: true, email: true, role: true, schoolId: true, isActive: true },
+    });
+
+    if (!newTeacher || newTeacher.schoolId !== params.schoolId || newTeacher.role !== Role.TEACHER) {
+      throw new AppError("O professor selecionado não pertence a esta instituição.", 400);
+    }
+
+    if (newTeacher.isActive === false) {
+      throw new AppError("Não é possível transferir a turma para um professor desativado.", 400);
+    }
+
+    if (classroom.teacherId === newTeacher.id) {
+      throw new AppError("Este professor já é o titular atual desta turma.", 400);
+    }
+
+    const previousTeacherId = classroom.teacherId;
+
+    const updated = await prisma.classroom.update({
+      where: { id: classroom.id },
+      data: { teacherId: newTeacher.id },
+      include: {
+        teacher: {
+          select: { id: true, name: true, email: true },
+        },
+        _count: {
+          select: { students: true, tasks: true },
+        },
+      },
+    });
+
+    try {
+      await realtimeNotificationService.notifyUsers([newTeacher.id, previousTeacherId], {
+        type: "CLASSROOM_TRANSFER",
+        title: `Transferência na turma ${classroom.name}`,
+        body: `A titularidade da turma ${classroom.name} (${classroom.code}) foi atribuída a ${newTeacher.name}.`,
+        route: `/classes/${classroom.id}`,
+      });
+    } catch {
+      // Não-bloqueante
+    }
+
+    await this.recordAuditLog({
+      schoolId: params.schoolId,
+      actorId: params.requesterId,
+      action: "CLASSROOM_TEACHER_TRANSFERRED",
+      targetType: "CLASSROOM",
+      targetId: classroom.id,
+      details: {
+        classroomName: classroom.name,
+        previousTeacherId,
+        newTeacherId: newTeacher.id,
+        newTeacherName: newTeacher.name,
+      },
+    });
+
+    return updated;
+  }
+
+  /**
+   * Remanejamento em lote de alunos entre duas turmas da mesma instituição.
+   */
+  async transferStudentsBatch(params: {
+    requesterId: string;
+    schoolId?: string | null;
+    fromClassroomId: string;
+    toClassroomId: string;
+    studentIds: string[];
+  }) {
+    if (!params.schoolId) {
+      throw new AppError("Instituição escolar não identificada.", 400);
+    }
+    if (!params.fromClassroomId || !params.toClassroomId) {
+      throw new AppError("Informe a turma de origem e a turma de destino.", 400);
+    }
+    if (params.fromClassroomId === params.toClassroomId) {
+      throw new AppError("A turma de destino deve ser diferente da turma de origem.", 400);
+    }
+    if (!Array.isArray(params.studentIds) || params.studentIds.length === 0) {
+      throw new AppError("Selecione ao menos um aluno para remanejar.", 400);
+    }
+
+    const [fromRoom, toRoom] = await Promise.all([
+      prisma.classroom.findUnique({
+        where: { id: params.fromClassroomId },
+        select: { id: true, name: true, schoolId: true, students: { select: { id: true } } },
+      }),
+      prisma.classroom.findUnique({
+        where: { id: params.toClassroomId },
+        select: { id: true, name: true, schoolId: true },
+      }),
+    ]);
+
+    if (!fromRoom || fromRoom.schoolId !== params.schoolId || !toRoom || toRoom.schoolId !== params.schoolId) {
+      throw new AppError("Uma ou ambas as turmas não pertencem a esta instituição.", 404);
+    }
+
+    const enrolledSet = new Set(fromRoom.students.map((s) => s.id));
+    const validIds = params.studentIds.filter((id) => enrolledSet.has(id));
+    if (validIds.length === 0) {
+      throw new AppError("Nenhum dos alunos selecionados pertence à turma de origem.", 400);
+    }
+
+    await prisma.$transaction([
+      prisma.classroom.update({
+        where: { id: fromRoom.id },
+        data: { students: { disconnect: validIds.map((id) => ({ id })) } },
+      }),
+      prisma.classroom.update({
+        where: { id: toRoom.id },
+        data: { students: { connect: validIds.map((id) => ({ id })) } },
+      }),
+    ]);
+
+    await this.recordAuditLog({
+      schoolId: params.schoolId,
+      actorId: params.requesterId,
+      action: "STUDENTS_BATCH_REASSIGNED",
+      targetType: "CLASSROOM",
+      targetId: toRoom.id,
+      details: {
+        fromClassroomId: fromRoom.id,
+        fromClassroomName: fromRoom.name,
+        toClassroomId: toRoom.id,
+        toClassroomName: toRoom.name,
+        movedCount: validIds.length,
+      },
+    });
+
+    return {
+      movedCount: validIds.length,
+      fromClassroomName: fromRoom.name,
+      toClassroomName: toRoom.name,
+    };
+  }
+
+  /**
+   * Registra evento no log de auditoria institucional.
+   */
+  async recordAuditLog(params: {
+    schoolId?: string | null;
+    actorId?: string | null;
+    action: string;
+    targetType: string;
+    targetId?: string | null;
+    details?: Record<string, unknown>;
+  }) {
+    try {
+      let actorName = "Sistema";
+      if (params.actorId) {
+        const actor = await prisma.user.findUnique({
+          where: { id: params.actorId },
+          select: { name: true },
+        });
+        if (actor?.name) actorName = actor.name;
+      }
+
+      await prisma.auditLog.create({
+        data: {
+          schoolId: params.schoolId || null,
+          actorId: params.actorId || null,
+          actorName,
+          action: params.action,
+          targetType: params.targetType,
+          targetId: params.targetId || null,
+          details: (params.details || {}) as any,
+        },
+      });
+    } catch {
+      // Log de auditoria nunca deve derrubar a operação principal
+    }
+  }
+
+  /**
+   * Lista o histórico de auditoria da escola.
+   */
+  async listAuditLogs(schoolId?: string | null, limit = 50) {
+    if (!schoolId) {
+      throw new AppError("Instituição escolar não identificada.", 400);
+    }
+
+    return prisma.auditLog.findMany({
+      where: { schoolId },
+      orderBy: { createdAt: "desc" },
+      take: Math.min(100, Math.max(1, limit)),
+    });
+  }
 }
 
 export const schoolOpsService = new SchoolOpsService();

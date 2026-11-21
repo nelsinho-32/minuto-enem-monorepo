@@ -6,6 +6,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
@@ -17,7 +18,13 @@ export interface SchoolAnnouncementItem {
   schoolId: string;
   title: string;
   content: string;
-  targetAudience: 'ALL' | 'TEACHERS_ONLY';
+  targetAudience: 'ALL' | 'TEACHERS_ONLY' | 'CLASSROOM';
+  classroomId?: string | null;
+  scheduledFor?: string | null;
+  classroom?: {
+    id: string;
+    name: string;
+  } | null;
   createdAt: string;
   school?: {
     id: string;
@@ -79,12 +86,13 @@ export function SchoolMuralCard() {
               <Text style={styles.muralTitle}>Mural da Escola</Text>
               <View style={styles.schoolPill}>
                 <Text style={styles.schoolPillText} numberOfLines={1}>
-                  {schoolName}
+                  {schoolName} • {announcements.length}{' '}
+                  {announcements.length === 1 ? 'aviso' : 'avisos'}
                 </Text>
               </View>
             </View>
             <Text style={styles.muralSub}>
-              Comunicados e avisos oficiais da direção e coordenação
+              Role a lista para ler os comunicados oficiais
             </Text>
           </View>
         </View>
@@ -98,14 +106,20 @@ export function SchoolMuralCard() {
         </TouchableOpacity>
       </View>
 
-      {/* Lista de Comunicados com Destaque Visual */}
-      <View style={styles.cardsList}>
-        {announcements.map((item, idx) => {
+      {/* Lista com altura fixa e rolagem interna para não estourar a tela */}
+      <ScrollView
+        style={styles.fixedListScroll}
+        contentContainerStyle={styles.cardsList}
+        nestedScrollEnabled
+        showsVerticalScrollIndicator
+      >
+        {announcements.map((item) => {
           const isTeachersOnly = item.targetAudience === 'TEACHERS_ONLY';
-          const isExpanded = expandedId === item.id || (announcements.length === 1 && idx === 0);
-          const isLongContent = item.content.length > 140;
+          const isClassroom = item.targetAudience === 'CLASSROOM';
+          const isExpanded = expandedId === item.id;
+          const isLongContent = item.content.length > 100;
 
-          const formattedDate = new Date(item.createdAt).toLocaleDateString('pt-BR', {
+          const formattedDate = new Date(item.scheduledFor || item.createdAt).toLocaleDateString('pt-BR', {
             day: '2-digit',
             month: 'short',
             hour: '2-digit',
@@ -113,11 +127,21 @@ export function SchoolMuralCard() {
           });
 
           return (
-            <View
+            <TouchableOpacity
               key={item.id}
+              activeOpacity={0.85}
+              onPress={() =>
+                isLongContent
+                  ? setExpandedId(isExpanded ? null : item.id)
+                  : undefined
+              }
               style={[
                 styles.announcementCard,
-                isTeachersOnly ? styles.cardTeacherAudience : styles.cardGeneralAudience,
+                isTeachersOnly
+                  ? styles.cardTeacherAudience
+                  : isClassroom
+                    ? { backgroundColor: '#F5F3FF', borderColor: '#DDD6FE', borderLeftColor: '#7C3AED' }
+                    : styles.cardGeneralAudience,
               ]}
             >
               <View style={styles.cardTopRow}>
@@ -125,22 +149,34 @@ export function SchoolMuralCard() {
                 <View
                   style={[
                     styles.audienceBadge,
-                    isTeachersOnly ? styles.badgeTeacher : styles.badgeGeneral,
+                    isTeachersOnly
+                      ? styles.badgeTeacher
+                      : isClassroom
+                        ? { backgroundColor: '#EDE9FE' }
+                        : styles.badgeGeneral,
                   ]}
                 >
                   <FontAwesome5
-                    name={isTeachersOnly ? 'chalkboard-teacher' : 'users'}
+                    name={isTeachersOnly ? 'chalkboard-teacher' : isClassroom ? 'graduation-cap' : 'users'}
                     size={10}
-                    color={isTeachersOnly ? '#2563EB' : '#16A34A'}
+                    color={isTeachersOnly ? '#2563EB' : isClassroom ? '#6D28D9' : '#16A34A'}
                     style={{ marginRight: 4 }}
                   />
                   <Text
                     style={[
                       styles.audienceBadgeText,
-                      isTeachersOnly ? styles.textTeacher : styles.textGeneral,
+                      isTeachersOnly
+                        ? styles.textTeacher
+                        : isClassroom
+                          ? { color: '#6D28D9' }
+                          : styles.textGeneral,
                     ]}
                   >
-                    {isTeachersOnly ? 'Apenas Professores' : 'Geral (Todos)'}
+                    {isTeachersOnly
+                      ? 'Apenas Professores'
+                      : isClassroom
+                        ? `Turma: ${item.classroom?.name || 'Específica'}`
+                        : 'Geral (Todos)'}
                   </Text>
                 </View>
 
@@ -152,37 +188,35 @@ export function SchoolMuralCard() {
               </View>
 
               {/* Título do Comunicado */}
-              <Text style={styles.announcementTitle}>{item.title}</Text>
+              <Text style={styles.announcementTitle} numberOfLines={isExpanded ? undefined : 1}>
+                {item.title}
+              </Text>
 
               {/* Conteúdo / Mensagem */}
               <Text
                 style={styles.announcementBody}
-                numberOfLines={isExpanded ? undefined : 3}
+                numberOfLines={isExpanded ? undefined : 2}
               >
                 {item.content}
               </Text>
 
               {/* Botão de Expandir / Recolher se for longo */}
               {isLongContent && (
-                <TouchableOpacity
-                  style={styles.expandToggleBtn}
-                  onPress={() => setExpandedId(isExpanded ? null : item.id)}
-                  activeOpacity={0.7}
-                >
+                <View style={styles.expandToggleBtn}>
                   <Text style={styles.expandToggleText}>
-                    {isExpanded ? 'Ver menos' : 'Ler comunicado completo'}
+                    {isExpanded ? 'Recolher aviso' : 'Toque para ler completo'}
                   </Text>
                   <FontAwesome5
                     name={isExpanded ? 'chevron-up' : 'chevron-down'}
                     size={10}
                     color="#2563EB"
                   />
-                </TouchableOpacity>
+                </View>
               )}
-            </View>
+            </TouchableOpacity>
           );
         })}
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -273,8 +307,13 @@ const baseStyles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: '#F8FAFC',
   },
+  fixedListScroll: {
+    height: 245,
+  },
   cardsList: {
-    gap: 12,
+    gap: 10,
+    paddingRight: 2,
+    paddingBottom: 4,
   },
   announcementCard: {
     backgroundColor: '#F8FAFC',

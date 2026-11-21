@@ -7,7 +7,8 @@ import {
   type DayStreakStatus,
   type WeekDayStreakItem,
 } from '@minuto-enem/shared';
-import { api, registerAuthTokenProvider } from '@/services/api';
+import { api, registerAuthTokenProvider, registerAccountDisabledHandler } from '@/services/api';
+import { Alert, Platform } from 'react-native';
 import { useClassroomStore } from './useClassroomStore';
 import { setSentryUser, clearSentryUser } from '@/services/sentry';
 
@@ -43,13 +44,28 @@ interface UserState {
   avatar: string | null;
   avatarsByUser: Record<string, string>;
   targetCourse: string;
+  targetInstitution: string;
+  targetModality: string;
   targetScore: number;
+  triHistory: Array<{
+    score: number;
+    label: string;
+    date: string;
+    accuracyPercent?: number | null;
+  }>;
   bio: string;
   setAvatar: (url: string | null) => void;
   setProfileMeta: (meta: {
     targetCourse?: string;
+    targetInstitution?: string;
+    targetModality?: string;
     targetScore?: number;
     bio?: string;
+  }) => void;
+  appendTriHistoryPoint: (point: {
+    score: number;
+    label: string;
+    accuracyPercent?: number | null;
   }) => void;
   addXp: (amount: number) => void;
   validateStreakOnLogin: () => Promise<void>;
@@ -120,6 +136,18 @@ export const useUserStore = create<UserState>()(
         setSentryUser(user);
         useClassroomStore.getState().setUserId(user.id);
         const savedAvatar = get().avatarsByUser?.[user.id] || get().avatar || null;
+        const userMeta = user as AuthUser & {
+          targetCourse?: string | null;
+          targetInstitution?: string | null;
+          targetModality?: string | null;
+          targetScore?: number | null;
+          triHistory?: Array<{
+            score: number;
+            label: string;
+            date: string;
+            accuracyPercent?: number | null;
+          }>;
+        };
         set({
           token,
           user,
@@ -130,6 +158,11 @@ export const useUserStore = create<UserState>()(
           longestStreak: user.longestStreak ?? get().longestStreak ?? 0,
           iceFreezes: user.iceFreezes ?? get().iceFreezes ?? 0,
           avatar: savedAvatar,
+          ...(userMeta.targetCourse ? { targetCourse: userMeta.targetCourse } : {}),
+          ...(userMeta.targetInstitution ? { targetInstitution: userMeta.targetInstitution } : {}),
+          ...(userMeta.targetModality ? { targetModality: userMeta.targetModality } : {}),
+          ...(typeof userMeta.targetScore === 'number' ? { targetScore: userMeta.targetScore } : {}),
+          ...(Array.isArray(userMeta.triHistory) ? { triHistory: userMeta.triHistory } : {}),
         });
         useClassroomStore.getState().fetchClassrooms();
       },
@@ -175,7 +208,10 @@ export const useUserStore = create<UserState>()(
       avatar: null,
       avatarsByUser: {},
       targetCourse: 'Medicina',
-      targetScore: 780,
+      targetInstitution: 'USP',
+      targetModality: 'AC',
+      targetScore: 836,
+      triHistory: [],
       bio: 'Focado na aprovação no ENEM!',
 
       setAvatar: (url) =>
@@ -196,8 +232,23 @@ export const useUserStore = create<UserState>()(
       setProfileMeta: (meta) =>
         set((state) => ({
           targetCourse: meta.targetCourse ?? state.targetCourse,
+          targetInstitution: meta.targetInstitution ?? state.targetInstitution,
+          targetModality: meta.targetModality ?? state.targetModality,
           targetScore: meta.targetScore ?? state.targetScore,
           bio: meta.bio ?? state.bio,
+        })),
+
+      appendTriHistoryPoint: (point) =>
+        set((state) => ({
+          triHistory: [
+            ...(state.triHistory || []),
+            {
+              score: Math.round(point.score),
+              label: point.label || 'Simulado',
+              accuracyPercent: point.accuracyPercent ?? null,
+              date: new Date().toISOString(),
+            },
+          ].slice(-20),
         })),
 
       addXp: (amount) => set((state) => ({ xp: state.xp + amount })),
@@ -399,7 +450,10 @@ export const useUserStore = create<UserState>()(
         avatar: state.avatar,
         avatarsByUser: state.avatarsByUser,
         targetCourse: state.targetCourse,
+        targetInstitution: state.targetInstitution,
+        targetModality: state.targetModality,
         targetScore: state.targetScore,
+        triHistory: state.triHistory,
         bio: state.bio,
       }),
       onRehydrateStorage: () => (state) => {
@@ -420,3 +474,23 @@ export const useUserStore = create<UserState>()(
 
 // Conecta automaticamente o token JWT da store ao cliente centralizado api.ts
 registerAuthTokenProvider(() => useUserStore.getState().token);
+
+// Desloga automaticamente se a direção escolar desativar a conta (HTTP 403)
+let accountDisabledAlerted = false;
+registerAccountDisabledHandler((reason: string) => {
+  const { token, logout } = useUserStore.getState();
+  if (!token) return;
+  logout();
+  if (!accountDisabledAlerted) {
+    accountDisabledAlerted = true;
+    const msg = reason || 'Sua conta foi desativada pela direção escolar.';
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.alert(msg);
+    } else {
+      Alert.alert('Sessão encerrada', msg);
+    }
+    setTimeout(() => {
+      accountDisabledAlerted = false;
+    }, 3000);
+  }
+});

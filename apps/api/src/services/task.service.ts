@@ -12,6 +12,7 @@ import { questionService, slugifyText } from "./question.service";
 import { triService } from "./tri.service";
 import { spacedRepetitionService } from "./spaced-repetition.service";
 import { streakService } from "./streak.service";
+import { realtimeNotificationService } from "./realtime-notification.service";
 
 export {
   CreateTaskInputSchema,
@@ -1474,6 +1475,220 @@ export class TaskService {
     });
 
     return { message: "Tarefa excluída com sucesso." };
+  }
+
+  /**
+   * Agenda / Calendário Unificado de Entregas de Turmas (TEACHER, SCHOOL ou STUDENT).
+   */
+  async getTaskCalendar(params: {
+    userId: string;
+    role: Role;
+    schoolId?: string | null;
+    classroomId?: string;
+  }) {
+    if (!params.userId) {
+      throw new AppError("Usuário não autenticado.", 401);
+    }
+
+    let whereClassroom: any = {};
+    if (params.role === Role.STUDENT) {
+      whereClassroom = { students: { some: { id: params.userId } } };
+    } else if (params.role === Role.TEACHER) {
+      whereClassroom = { teacherId: params.userId };
+    } else if (params.role === Role.SCHOOL) {
+      if (params.schoolId) {
+        whereClassroom = { schoolId: params.schoolId };
+      } else {
+        whereClassroom = { id: "__none__" };
+      }
+    }
+
+    const classrooms = await prisma.classroom.findMany({
+      where: {
+        ...whereClassroom,
+        ...(params.classroomId ? { id: params.classroomId } : {}),
+      },
+      select: {
+        id: true,
+        name: true,
+        code: true,
+        _count: { select: { students: true } },
+      },
+    });
+
+    const classroomIds = classrooms.map((c) => c.id);
+    if (classroomIds.length === 0) {
+      return { classrooms: [], items: [], summary: { total: 0, overdue: 0, today: 0, upcoming: 0 } };
+    }
+
+    const tasks = await prisma.task.findMany({
+      where: {
+        OR: [{ classroomId: { in: classroomIds } }, { classId: { in: classroomIds } }],
+        status: { not: "COMPLETED" },
+      },
+      include: {
+        classroom: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+            _count: { select: { students: true } },
+          },
+        },
+        subject: { select: { id: true, name: true, slug: true } },
+        submissions:
+          params.role === Role.STUDENT
+            ? { where: { studentId: params.userId }, select: { id: true, accuracyPercent: true, submittedAt: true } }
+            : { select: { id: true } },
+        essaySubmissions:
+          params.role === Role.STUDENT
+            ? { where: { studentId: params.userId }, select: { id: true, status: true, finalScore: true } }
+            : { select: { id: true } },
+      },
+      orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }],
+    });
+
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+    let overdue = 0;
+    let today = 0;
+    let upcoming = 0;
+
+    const items = tasks.map((task) => {
+      const completedByStudent =
+        params.role === Role.STUDENT &&
+        (task.submissions.length > 0 || task.essaySubmissions.length > 0);
+
+      let scheduleState: "COMPLETED" | "OVERDUE" | "TODAY" | "UPCOMING" | "NO_DATE" = "NO_DATE";
+      if (completedByStudent) {
+        scheduleState = "COMPLETED";
+      } else if (task.dueDate) {
+        if (task.dueDate < startOfToday) {
+          scheduleState = "OVERDUE";
+          overdue += 1;
+        } else if (task.dueDate <= endOfToday) {
+          scheduleState = "TODAY";
+          today += 1;
+        } else {
+          scheduleState = "UPCOMING";
+          upcoming += 1;
+        }
+      } else {
+        upcoming += 1;
+      }
+
+      const submissionCount = task.submissions.length + task.essaySubmissions.length;
+      const totalStudents = task.classroom?._count?.students ?? 0;
+
+      return {
+        id: task.id,
+        title: task.title || task.topic,
+        topic: task.topic,
+        description: task.description,
+        dueDate: task.dueDate,
+        status: task.status,
+        creationMode: task.creationMode,
+        difficulty: task.difficulty,
+        totalQuestions: task.total || task.questionIds?.length || 0,
+        classroom: task.classroom
+          ? {
+              id: task.classroom.id,
+              name: task.classroom.name,
+              code: task.classroom.code,
+              studentsCount: totalStudents,
+            }
+          : null,
+        subject: task.subject,
+        scheduleState,
+        completedByStudent,
+        submissionCount,
+        totalStudents,
+      };
+    });
+
+    return {
+      classrooms: classrooms.map((c) => ({
+        id: c.id,
+        name: c.name,
+        code: c.code,
+        studentsCount: c._count.students,
+      })),
+      items,
+      summary: {
+        total: items.length,
+        overdue,
+        today,
+        upcoming,
+      },
+    };
+  }
+
+  /**
+   * Notifica em 1 clique apenas os alunos da turma que ainda não entregaram esta tarefa.
+   */
+  async remindPendingStudents(params: {
+    taskId: string;
+    requesterId: string;
+    role: Role;
+    schoolId?: string | null;
+  }) {
+    const task = await prisma.task.findUnique({
+      where: { id: params.taskId },
+      include: {
+        classroom: {
+          select: {
+            id: true,
+            name: true,
+            teacherId: true,
+            schoolId: true,
+            students: { select: { id: true, name: true } },
+          },
+        },
+        submissions: { select: { studentId: true } },
+        essaySubmissions: { select: { studentId: true } },
+      },
+    });
+
+    if (!task || !task.classroom) {
+      throw new AppError("Tarefa ou turma não encontrada.", 404);
+    }
+
+    const canRemind =
+      params.role === Role.ADMIN ||
+      task.classroom.teacherId === params.requesterId ||
+      (params.role === Role.SCHOOL && task.classroom.schoolId === params.schoolId);
+
+    if (!canRemind) {
+      throw new AppError("Apenas o professor da turma ou a direção podem enviar lembretes.", 403);
+    }
+
+    const submittedIds = new Set<string>([
+      ...task.submissions.map((s) => s.studentId),
+      ...task.essaySubmissions.map((e) => e.studentId),
+    ]);
+
+    const pendingStudents = task.classroom.students.filter((st) => !submittedIds.has(st.id));
+
+    if (pendingStudents.length === 0) {
+      return { notifiedCount: 0, message: "Todos os alunos já entregaram esta atividade!" };
+    }
+
+    await realtimeNotificationService.notifyUsers(
+      pendingStudents.map((s) => s.id),
+      {
+        type: "NEW_TASK",
+        title: `Lembrete de entrega — ${task.classroom.name}`,
+        body: `A atividade "${task.title || task.topic}" ainda está pendente. Acesse a turma para entregar!`,
+        route: `/classes/${task.classroom.id}`,
+      }
+    );
+
+    return {
+      notifiedCount: pendingStudents.length,
+      pendingNames: pendingStudents.map((s) => s.name),
+    };
   }
 }
 

@@ -69,6 +69,41 @@ export class AuthController {
     }
   }
 
+  /**
+   * PATCH /api/auth/goals
+   * Atualiza o curso, instituição e nota de corte desejada pelo usuário.
+   */
+  async updateGoals(req: Request, res: Response): Promise<Response> {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        throw new AppError("Usuário não autenticado.", 401);
+      }
+
+      const result = await authService.updateGoals(userId, req.body || {});
+      return res.status(200).json(result);
+    } catch (error) {
+      return this.handleError(error, res);
+    }
+  }
+
+  /**
+   * POST /api/auth/tri-history
+   * Registra uma nova nota TRI na curva histórica do aluno.
+   */
+  async appendTriHistory(req: Request, res: Response): Promise<Response> {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        throw new AppError("Usuário não autenticado.", 401);
+      }
+      const result = await authService.appendTriHistory(userId, req.body || {});
+      return res.status(201).json(result);
+    } catch (error) {
+      return this.handleError(error, res);
+    }
+  }
+
   private handleError(error: unknown, res: Response): Response {
     if (error instanceof AppError) {
       return res.status(error.statusCode).json({

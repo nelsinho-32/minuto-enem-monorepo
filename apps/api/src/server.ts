@@ -43,6 +43,14 @@ import { getActiveStorageProviderName } from "./services/storage.service";
 import { realtimeNotificationService } from "./services/realtime-notification.service";
 import { questionController } from "./controllers/question.controller";
 import { setupDuelWebSocket } from "./websocket/duel.socket";
+import {
+  searchSisuCourses,
+  SISU_INSTITUTIONS,
+  SISU_COURSE_DEFINITIONS,
+  SISU_MODALITIES,
+  getSisuStates,
+} from "@minuto-enem/shared";
+import { announcementService } from "./services/announcement.service";
 import { setupChatWebSocket } from "./websocket/chat.socket";
 import { socketAuthMiddleware } from "./websocket/socket-auth.middleware";
 import { apiGeneralRateLimiter } from "./middlewares/rate-limit.middleware";
@@ -426,6 +434,52 @@ const getLessonByIdHandler = async (req: express.Request, res: express.Response)
 app.get("/lessons/:id", getLessonByIdHandler);
 app.get("/api/lessons/:id", getLessonByIdHandler);
 
+// Catálogo relacional de Cursos, Instituições e Notas de Corte SISU (com cotas e overrides dinâmicos)
+const sisuCoursesHandler = async (req: express.Request, res: express.Response) => {
+  try {
+    const overrides = await prisma.sisuCutoffOverride.findMany().catch(() => []);
+    const results = searchSisuCourses({
+      query: typeof req.query.q === "string" ? req.query.q : undefined,
+      institution:
+        typeof req.query.institution === "string" ? req.query.institution : undefined,
+      course: typeof req.query.course === "string" ? req.query.course : undefined,
+      state: typeof req.query.state === "string" ? req.query.state : undefined,
+      areaFocus: typeof req.query.area === "string" ? req.query.area : undefined,
+      modality: typeof req.query.modality === "string" ? req.query.modality : "AC",
+      maxCutoff: req.query.maxCutoff ? Number(req.query.maxCutoff) : undefined,
+      limit: req.query.limit ? Number(req.query.limit) : 80,
+      dynamicOverrides: overrides.map((o) => ({
+        institution: o.institution,
+        courseSlug: o.courseSlug,
+        modality: o.modality,
+        cutoffScore: o.cutoffScore,
+        referenceEdition: o.referenceEdition,
+      })),
+    });
+
+    return res.json({
+      total: results.length,
+      institutions: SISU_INSTITUTIONS.map((i) => ({
+        sigla: i.sigla,
+        name: i.name,
+        city: i.city,
+        state: i.state,
+      })),
+      courses: SISU_COURSE_DEFINITIONS.map((c) => ({
+        slug: c.slug,
+        name: c.name,
+      })),
+      modalities: SISU_MODALITIES,
+      states: getSisuStates(),
+      items: results,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || "Erro ao consultar catálogo SISU." });
+  }
+};
+app.get("/sisu/courses", sisuCoursesHandler);
+app.get("/api/sisu/courses", sisuCoursesHandler);
+
 // ==========================================
 // OBSERVABILIDADE E TRATAMENTO DE ERROS (SENTRY)
 // ==========================================
@@ -497,6 +551,11 @@ function getLocalIpAddress(): string {
 }
 
 if (process.env.VITEST !== "true") {
+  // Worker periódico (a cada 60s) para disparar notificações de comunicados agendados no horário programado
+  setInterval(() => {
+    announcementService.dispatchDueScheduledAnnouncements().catch(() => {});
+  }, 60_000);
+
   httpServer.listen(PORT, HOST, () => {
     const localIp = getLocalIpAddress();
     console.log(`🚀 API e WebSocket (Socket.io) rodando localmente em: http://localhost:${PORT}`);

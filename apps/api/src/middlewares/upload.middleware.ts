@@ -201,3 +201,71 @@ export function uploadEssayImageMiddleware(
   });
 }
 
+const MAX_AUDIO_SIZE_BYTES = 8 * 1024 * 1024; // 8MB
+
+const audioFileFilter: multer.Options["fileFilter"] = (
+  _req: Request,
+  file: Express.Multer.File,
+  callback: multer.FileFilterCallback
+) => {
+  const mime = (file.mimetype || "").toLowerCase();
+  const name = (file.originalname || "").toLowerCase();
+  const validExt = [".webm", ".mp3", ".m4a", ".wav", ".ogg", ".aac", ".mp4"].some((ext) =>
+    name.endsWith(ext)
+  );
+  if (mime.startsWith("audio/") || mime === "video/webm" || validExt) {
+    callback(null, true);
+  } else {
+    callback(
+      new AppError(
+        "Formato de áudio inválido. Utilize WEBM, MP3, M4A, WAV ou OGG.",
+        400
+      )
+    );
+  }
+};
+
+const uploadAudioMulter = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_AUDIO_SIZE_BYTES },
+  fileFilter: audioFileFilter,
+});
+
+const uploadAudioFields = uploadAudioMulter.fields([
+  { name: "audio", maxCount: 1 },
+  { name: "file", maxCount: 1 },
+]);
+
+/**
+ * Middleware opcional para upload de áudio em devolutivas por questão.
+ * Se a requisição for JSON sem multipart, segue normalmente.
+ */
+export function uploadOptionalAudioMiddleware(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void {
+  const contentType = req.headers["content-type"] || "";
+  if (!contentType.includes("multipart/form-data")) {
+    return next();
+  }
+
+  uploadAudioFields(req, res, (err: any) => {
+    if (err) {
+      if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
+        return next(new AppError("O arquivo de áudio excede o limite de 8MB.", 400));
+      }
+      return next(err);
+    }
+
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+    if (files?.["audio"]?.[0]) {
+      req.file = files["audio"][0];
+    } else if (files?.["file"]?.[0]) {
+      req.file = files["file"][0];
+    }
+
+    next();
+  });
+}
+

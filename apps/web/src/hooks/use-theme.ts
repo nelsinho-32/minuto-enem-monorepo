@@ -64,6 +64,7 @@ const DARK_BG_MAP: Record<string, string> = {
   '#fffbeb': '#451A03',
   '#fef3c7': '#451A03',
   '#fff0d4': '#451A03',
+  '#fff9f0': '#431407',
   '#fff7ed': '#431407',
   '#ffedd5': '#431407',
 };
@@ -79,6 +80,8 @@ const DARK_BORDER_MAP: Record<string, string> = {
   '#e9d5ff': '#6B21A8',
   '#fecaca': '#991B1B',
   '#fde68a': '#92400E',
+  '#ffe4b5': '#92400E',
+  '#ffb84d': '#B45309',
   '#86efac': '#166534',
   '#ffffff': '#334155',
   '#fff': '#334155',

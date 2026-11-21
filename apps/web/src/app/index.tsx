@@ -333,67 +333,139 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* ====================================================== */}
-        {/* ABA 1: INÍCIO (FOCO TOTAL NO QUE FAZER HOJE)           */}
+        {/* ABA 1: INÍCIO (ADAPTADO POR ROLE: ALUNO / PROF / ESCOLA)*/}
         {/* ====================================================== */}
         {activeTab === "INICIO" && (
           <>
-            {/* Saudação + Hero de Ação Imediata */}
-            <View style={styles.heroBanner}>
-              <View style={styles.heroTopRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.greetingText}>
-                    {getGreeting()}, {firstName}! 👋
-                  </Text>
-                  <Text style={styles.heroTitle}>
-                    Pronto para avançar rumo a {targetCourse || "sua aprovação"}?
-                  </Text>
+            {/* HERO DIFERENCIADO POR ROLE PARA EVITAR CONFUSÃO */}
+            {user?.role === "SCHOOL" ? (
+              <View style={[styles.heroBanner, { backgroundColor: "#1E3A8A" }]}>
+                <View style={styles.heroTopRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.greetingText}>
+                      {getGreeting()}, {firstName}! 🏫
+                    </Text>
+                    <Text style={styles.heroTitle}>
+                      Direção Escolar — Gestão e Resultados
+                    </Text>
+                  </View>
                 </View>
-                <TouchableOpacity
-                  style={styles.streakPill}
-                  onPress={() => router.push("/streak")}
-                  activeOpacity={0.8}
-                >
-                  <FontAwesome5 name="fire-alt" size={14} color="#EA580C" />
-                  <Text style={styles.streakPillText}>{currentStreak}d</Text>
-                </TouchableOpacity>
-              </View>
-
-              <Text style={styles.heroSubtitle}>
-                Foco recomendado hoje:{" "}
-                <Text style={{ fontWeight: "800", color: "#FFFFFF" }}>
-                  {difficultySubject}
+                <Text style={styles.heroSubtitle}>
+                  Acompanhe turmas, professores, simulados institucionais e retenção de alunos.
                 </Text>
-              </Text>
-
-              <View style={styles.heroActionsRow}>
-                <TouchableOpacity
-                  style={styles.heroPrimaryBtn}
-                  activeOpacity={0.85}
-                  onPress={() =>
-                    router.push({
-                      pathname: "/quiz",
-                      params: {
-                        mode: "pratica",
-                        subject: difficultySubject,
-                      },
-                    } as any)
-                  }
-                >
-                  <FontAwesome5 name="play" size={12} color="#0284C7" />
-                  <Text style={styles.heroPrimaryBtnText}>
-                    Continuar Estudando
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.heroSecondaryBtn}
-                  activeOpacity={0.85}
-                  onPress={() => setActiveTab("MATERIAS")}
-                >
-                  <Text style={styles.heroSecondaryBtnText}>Ver Matérias</Text>
-                </TouchableOpacity>
+                <View style={styles.heroActionsRow}>
+                  <TouchableOpacity
+                    style={styles.heroPrimaryBtn}
+                    activeOpacity={0.85}
+                    onPress={() => router.push("/school/dashboard" as any)}
+                  >
+                    <FontAwesome5 name="school" size={12} color="#1E3A8A" />
+                    <Text style={[styles.heroPrimaryBtnText, { color: "#1E3A8A" }]}>
+                      Painel da Direção
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.heroSecondaryBtn}
+                    activeOpacity={0.85}
+                    onPress={() => router.push("/school/operations" as any)}
+                  >
+                    <Text style={styles.heroSecondaryBtnText}>Simulados & Alertas</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-            </View>
+            ) : user?.role === "TEACHER" ? (
+              <View style={[styles.heroBanner, { backgroundColor: "#5B21B6" }]}>
+                <View style={styles.heroTopRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.greetingText}>
+                      {getGreeting()}, Prof. {firstName}! 👩‍🏫
+                    </Text>
+                    <Text style={styles.heroTitle}>
+                      Área Docente — Turmas, Listas e Redações
+                    </Text>
+                  </View>
+                </View>
+                <Text style={styles.heroSubtitle}>
+                  Corrija redações da Oficina Nota 1000, crie questões autorais e acompanhe suas turmas.
+                </Text>
+                <View style={styles.heroActionsRow}>
+                  <TouchableOpacity
+                    style={styles.heroPrimaryBtn}
+                    activeOpacity={0.85}
+                    onPress={() => router.push("/teacher/essays" as any)}
+                  >
+                    <FontAwesome5 name="pen-fancy" size={12} color="#5B21B6" />
+                    <Text style={[styles.heroPrimaryBtnText, { color: "#5B21B6" }]}>
+                      Corrigir Redações
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.heroSecondaryBtn}
+                    activeOpacity={0.85}
+                    onPress={() => router.push("/classes/calendar" as any)}
+                  >
+                    <Text style={styles.heroSecondaryBtnText}>Agenda de Entregas</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.heroBanner}>
+                <View style={styles.heroTopRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.greetingText}>
+                      {getGreeting()}, {firstName}! 👋
+                    </Text>
+                    <Text style={styles.heroTitle}>
+                      Pronto para avançar rumo a {targetCourse || "sua aprovação"}?
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.streakPill}
+                    onPress={() => router.push("/streak")}
+                    activeOpacity={0.8}
+                  >
+                    <FontAwesome5 name="fire-alt" size={14} color="#EA580C" />
+                    <Text style={styles.streakPillText}>{currentStreak}d</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={styles.heroSubtitle}>
+                  Foco recomendado hoje:{" "}
+                  <Text style={{ fontWeight: "800", color: "#FFFFFF" }}>
+                    {difficultySubject}
+                  </Text>
+                </Text>
+
+                <View style={styles.heroActionsRow}>
+                  <TouchableOpacity
+                    style={styles.heroPrimaryBtn}
+                    activeOpacity={0.85}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/quiz",
+                        params: {
+                          mode: "pratica",
+                          subject: difficultySubject,
+                        },
+                      } as any)
+                    }
+                  >
+                    <FontAwesome5 name="play" size={12} color="#0284C7" />
+                    <Text style={styles.heroPrimaryBtnText}>
+                      Continuar Estudando
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.heroSecondaryBtn}
+                    activeOpacity={0.85}
+                    onPress={() => setActiveTab("MATERIAS")}
+                  >
+                    <Text style={styles.heroSecondaryBtnText}>Ver Matérias</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
 
             {/* Painéis B2B (Somente para ADMIN / SCHOOL / TEACHER) */}
             {user?.role === "ADMIN" && (
@@ -421,17 +493,17 @@ export default function HomeScreen() {
               <TouchableOpacity
                 style={[styles.b2bCard, { borderColor: "#BAE6FD", backgroundColor: "#F0F9FF" }]}
                 activeOpacity={0.85}
-                onPress={() => router.push("/school/dashboard" as any)}
+                onPress={() => router.push("/school/operations" as any)}
               >
                 <View style={[styles.b2bIconBox, { backgroundColor: "#0284C7" }]}>
-                  <FontAwesome5 name="school" size={16} color="#FFF" />
+                  <FontAwesome5 name="users-cog" size={15} color="#FFF" />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.b2bTitle, { color: "#0369A1" }]}>
-                    Painel da Direção Escolar
+                    Simulados Unificados, Importação & Alertas de Evasão
                   </Text>
                   <Text style={styles.b2bSub}>
-                    Ranking de turmas, corpo docente e mural institucional.
+                    Agende simulados para toda a escola, importe alunos/professores e monitore retenção.
                   </Text>
                 </View>
                 <FontAwesome5 name="chevron-right" size={13} color="#0284C7" />
@@ -439,127 +511,147 @@ export default function HomeScreen() {
             )}
 
             {user?.role === "TEACHER" && (
+              <TouchableOpacity
+                style={[styles.b2bCard, { borderColor: "#BBF7D0", backgroundColor: "#F0FDF4" }]}
+                activeOpacity={0.85}
+                onPress={() => router.push("/classes/teacher-tracking" as any)}
+              >
+                <View style={[styles.b2bIconBox, { backgroundColor: "#16A34A" }]}>
+                  <FontAwesome5 name="chart-bar" size={15} color="#FFF" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.b2bTitle, { color: "#15803D" }]}>
+                    Acompanhamento de Listas e Desempenho
+                  </Text>
+                  <Text style={styles.b2bSub}>
+                    Veja quem entregou cada lista, taxa de acertos e tempo médio por aluno.
+                  </Text>
+                </View>
+                <FontAwesome5 name="chevron-right" size={13} color="#16A34A" />
+              </TouchableOpacity>
+            )}
+
+            {(user?.role === "TEACHER" || user?.role === "STUDENT") && (
+              <TouchableOpacity
+                style={[
+                  styles.b2bCard,
+                  {
+                    borderColor: theme.isDark ? "#4C1D95" : "#DDD6FE",
+                    backgroundColor: theme.isDark ? "#1E293B" : "#F5F3FF",
+                  },
+                ]}
+                activeOpacity={0.85}
+                onPress={() => router.push("/classes/calendar" as any)}
+              >
+                <View style={[styles.b2bIconBox, { backgroundColor: "#7C3AED" }]}>
+                  <FontAwesome5 name="calendar-alt" size={15} color="#FFF" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={[
+                      styles.b2bTitle,
+                      { color: theme.isDark ? "#C4B5FD" : "#5B21B6" },
+                    ]}
+                  >
+                    Agenda Unificada de Entregas
+                  </Text>
+                  <Text style={[styles.b2bSub, { color: theme.textMuted }]}>
+                    {user?.role === "TEACHER"
+                      ? "Veja prazos e entregas de todas as suas turmas em ordem cronológica."
+                      : "Acompanhe listas pendentes, prazos de hoje e tarefas entregues."}
+                  </Text>
+                </View>
+                <FontAwesome5 name="chevron-right" size={13} color="#7C3AED" />
+              </TouchableOpacity>
+            )}
+
+            {/* Atalhos exclusivos do ESTUDANTE */}
+            {user?.role !== "SCHOOL" && user?.role !== "TEACHER" && (
               <>
                 <TouchableOpacity
-                  style={[styles.b2bCard, { borderColor: "#E9D5FF", backgroundColor: "#FAF5FF" }]}
+                  style={[
+                    styles.b2bCard,
+                    {
+                      borderColor: theme.isDark ? "#14532D" : "#BBF7D0",
+                      backgroundColor: theme.isDark ? "#1E293B" : "#F0FDF4",
+                    },
+                  ]}
                   activeOpacity={0.85}
-                  onPress={() => router.push("/teacher/essays" as any)}
-                >
-                  <View style={[styles.b2bIconBox, { backgroundColor: "#8E44AD" }]}>
-                    <FontAwesome5 name="pen-fancy" size={15} color="#FFF" />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.b2bTitle, { color: "#6B21A8" }]}>
-                      Oficina Nota 1000 — Corrigir Redações
-                    </Text>
-                    <Text style={styles.b2bSub}>
-                      Avalie redações manuscritas com marcações visuais e 5 competências.
-                    </Text>
-                  </View>
-                  <FontAwesome5 name="chevron-right" size={13} color="#8E44AD" />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.b2bCard, { borderColor: "#BBF7D0", backgroundColor: "#F0FDF4" }]}
-                  activeOpacity={0.85}
-                  onPress={() => router.push("/teacher/bank" as any)}
+                  onPress={() => router.push("/study-plan" as any)}
                 >
                   <View style={[styles.b2bIconBox, { backgroundColor: "#16A34A" }]}>
-                    <FontAwesome5 name="layer-group" size={15} color="#FFF" />
+                    <FontAwesome5 name="calendar-check" size={16} color="#FFF" />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.b2bTitle, { color: "#15803D" }]}>
-                      Banco Autoral de Questões e Listas
+                    <Text
+                      style={[
+                        styles.b2bTitle,
+                        { color: theme.isDark ? "#4ADE80" : "#15803D" },
+                      ]}
+                    >
+                      Cronograma Semanal Adaptativo
                     </Text>
-                    <Text style={styles.b2bSub}>
-                      Crie questões próprias e aplique modelos reutilizáveis nas suas turmas.
+                    <Text style={[styles.b2bSub, { color: theme.textMuted }]}>
+                      Plano personalizado focado nas suas matérias de maior atenção (+20 XP/bloco).
                     </Text>
                   </View>
                   <FontAwesome5 name="chevron-right" size={13} color="#16A34A" />
                 </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.b2bCard,
+                    {
+                      borderColor: theme.isDark ? "#1E3A8A" : "#BAE6FD",
+                      backgroundColor: theme.isDark ? "#1E293B" : "#F0F9FF",
+                    },
+                  ]}
+                  activeOpacity={0.85}
+                  onPress={() => router.push("/simulado" as any)}
+                >
+                  <View style={[styles.b2bIconBox, { backgroundColor: "#0284C7" }]}>
+                    <FontAwesome5 name="stopwatch" size={16} color="#FFF" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={[
+                        styles.b2bTitle,
+                        { color: theme.isDark ? "#38BDF8" : "#0369A1" },
+                      ]}
+                    >
+                      Simulado Oficial ENEM + Simulador SISU
+                    </Text>
+                    <Text style={[styles.b2bSub, { color: theme.textMuted }]}>
+                      Prova cronometrada (Dia 1, Dia 2 ou Express), cartão-resposta e nota TRI.
+                    </Text>
+                  </View>
+                  <FontAwesome5 name="chevron-right" size={13} color={theme.tint} />
+                </TouchableOpacity>
               </>
             )}
 
-            {/* Atalho Cronograma Semanal Adaptativo */}
-            <TouchableOpacity
-              style={[
-                styles.b2bCard,
-                {
-                  borderColor: theme.isDark ? "#14532D" : "#BBF7D0",
-                  backgroundColor: theme.isDark ? "#1E293B" : "#F0FDF4",
-                },
-              ]}
-              activeOpacity={0.85}
-              onPress={() => router.push("/study-plan" as any)}
-            >
-              <View style={[styles.b2bIconBox, { backgroundColor: "#16A34A" }]}>
-                <FontAwesome5 name="calendar-check" size={16} color="#FFF" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text
-                  style={[
-                    styles.b2bTitle,
-                    { color: theme.isDark ? "#4ADE80" : "#15803D" },
-                  ]}
-                >
-                  Cronograma Semanal Adaptativo
-                </Text>
-                <Text style={[styles.b2bSub, { color: theme.textMuted }]}>
-                  Plano personalizado focado nas suas matérias de maior atenção (+20 XP/bloco).
-                </Text>
-              </View>
-              <FontAwesome5 name="chevron-right" size={13} color="#16A34A" />
-            </TouchableOpacity>
-
-            {/* Atalho Simulado Oficial Cronometrado + Simulador SISU */}
-            <TouchableOpacity
-              style={[
-                styles.b2bCard,
-                {
-                  borderColor: theme.isDark ? "#1E3A8A" : "#BAE6FD",
-                  backgroundColor: theme.isDark ? "#1E293B" : "#F0F9FF",
-                },
-              ]}
-              activeOpacity={0.85}
-              onPress={() => router.push("/simulado" as any)}
-            >
-              <View style={[styles.b2bIconBox, { backgroundColor: "#0284C7" }]}>
-                <FontAwesome5 name="stopwatch" size={16} color="#FFF" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text
-                  style={[
-                    styles.b2bTitle,
-                    { color: theme.isDark ? "#38BDF8" : "#0369A1" },
-                  ]}
-                >
-                  Simulado Oficial ENEM + Simulador SISU
-                </Text>
-                <Text style={[styles.b2bSub, { color: theme.textMuted }]}>
-                  Prova cronometrada (Dia 1, Dia 2 ou Express), cartão-resposta e nota TRI.
-                </Text>
-              </View>
-              <FontAwesome5 name="chevron-right" size={13} color={theme.tint} />
-            </TouchableOpacity>
-
-            {/* Mural de Avisos e Notícias em Destaque na Home */}
+            {/* Mural de Avisos e Notícias (Lista de tamanho fixo para todas as roles) */}
             <View style={{ marginBottom: 16 }}>
               <SchoolMuralCard />
             </View>
 
-            {/* Calendário de Ofensiva Compacto */}
-            <View style={styles.sectionBlock}>
-              <WeeklyStreakCalendar
-                compact
-                currentStreak={currentStreak}
-                iceFreezes={iceFreezes}
-                weekDays={weekDays}
-                onPress={() => router.push("/streak")}
-              />
-            </View>
+            {/* Calendário de Ofensiva Compacto (apenas Aluno/Admin) */}
+            {user?.role !== "SCHOOL" && user?.role !== "TEACHER" && (
+              <View style={styles.sectionBlock}>
+                <WeeklyStreakCalendar
+                  compact
+                  currentStreak={currentStreak}
+                  iceFreezes={iceFreezes}
+                  weekDays={weekDays}
+                  onPress={() => router.push("/streak")}
+                />
+              </View>
+            )}
 
-            {/* Pendências da Turma (Resumo Acionável em 1 Card) */}
-            <View style={styles.sectionBlock}>
+            {/* Pendências da Turma (apenas Aluno) vs Gestão Rápida (Escola/Professor) */}
+            {user?.role !== "SCHOOL" && user?.role !== "TEACHER" && (
+              <>
+              <View style={styles.sectionBlock}>
               <View style={styles.sectionHeaderRow}>
                 <Text style={styles.sectionTitle}>Resumo do Dia</Text>
                 <TouchableOpacity onPress={() => setActiveTab("TURMA")}>
@@ -666,6 +758,8 @@ export default function HomeScreen() {
                 </TouchableOpacity>
               </View>
             </View>
+            </>
+            )}
 
             {/* Atalho Compacto de Chats & Fórum Opcional */}
             <TouchableOpacity
@@ -786,10 +880,21 @@ export default function HomeScreen() {
               <SchoolMuralCard />
             </View>
 
-            {/* Ação: Criar Turma (Professor) ou Entrar com Código (Aluno) */}
+            {/* Ação: Criar Turma (Professor), Gerenciar Turmas (Escola) ou Entrar com Código (Aluno) */}
             <View style={{ marginBottom: 14 }}>
               {user?.role === "TEACHER" ? (
                 <CreateRoomButton />
+              ) : user?.role === "SCHOOL" ? (
+                <TouchableOpacity
+                  style={styles.joinCodeTriggerBtn}
+                  onPress={() => router.push("/school/dashboard" as any)}
+                  activeOpacity={0.85}
+                >
+                  <FontAwesome5 name="school" size={13} color="#0284C7" />
+                  <Text style={styles.joinCodeTriggerText}>
+                    Gerenciar Turmas e Professores da Escola
+                  </Text>
+                </TouchableOpacity>
               ) : (
                 <TouchableOpacity
                   style={styles.joinCodeTriggerBtn}

@@ -21,6 +21,8 @@ import { safeAsyncStorage as AsyncStorage } from '@/services/safeStorage';
 import { useUserStore } from '@/store/useUserStore';
 import { useOfflineQueueStore } from '@/store/useOfflineQueueStore';
 import { ConfirmModal } from '@/components/ConfirmModal';
+import { SisuCoursePickerModal } from '@/components/SisuCoursePickerModal';
+import { TriHistoryChart } from '@/components/TriHistoryChart';
 import { api } from '@/services/api';
 import { useTheme, type ThemePreference , useThemedStyles } from '@/hooks/use-theme';
 import {
@@ -132,7 +134,10 @@ export default function ProfileScreen() {
     answeredQuestionsCount: storeAnsweredCount,
     avatar,
     targetCourse,
+    targetInstitution,
+    targetModality,
     targetScore,
+    triHistory,
     bio,
     setAvatar,
     setProfileMeta,
@@ -147,8 +152,11 @@ export default function ProfileScreen() {
 
   // Modal de edição de meta e curso do ENEM
   const [showGoalModal, setShowGoalModal] = useState(false);
+  const [showSisuPicker, setShowSisuPicker] = useState(false);
   const [draftCourse, setDraftCourse] = useState(targetCourse || 'Medicina');
-  const [draftScore, setDraftScore] = useState(String(targetScore || 780));
+  const [draftInstitution, setDraftInstitution] = useState(targetInstitution || 'USP');
+  const [draftModality, setDraftModality] = useState(targetModality || 'AC');
+  const [draftScore, setDraftScore] = useState(String(targetScore || 836));
   const [draftBio, setDraftBio] = useState(bio || 'Focado na aprovação no ENEM!');
 
   // Tema opcional (Claro / Escuro / Sistema) + Pacote Offline
@@ -441,17 +449,32 @@ export default function ProfileScreen() {
     setShowPhotoModal(false);
   };
 
-  const handleSaveGoals = () => {
+  const handleSaveGoals = async () => {
     const parsedScore = Math.min(
       1000,
       Math.max(400, Number(draftScore) || 750)
     );
+    const nextCourse = draftCourse.trim() || 'Medicina';
+    const nextInst = draftInstitution.trim() || 'USP';
+    const nextModality = draftModality || 'AC';
     setProfileMeta({
-      targetCourse: draftCourse.trim() || 'Medicina',
+      targetCourse: nextCourse,
+      targetInstitution: nextInst,
+      targetModality: nextModality,
       targetScore: parsedScore,
       bio: draftBio.trim() || 'Focado na aprovação no ENEM!',
     });
     setShowGoalModal(false);
+    try {
+      await api.patch('/auth/goals', {
+        targetCourse: nextCourse,
+        targetInstitution: nextInst,
+        targetModality: nextModality,
+        targetScore: parsedScore,
+      });
+    } catch {
+      // Offline-safe: permanece salvo localmente no Zustand
+    }
   };
 
   const confirmLogoutAction = () => {
@@ -794,12 +817,12 @@ export default function ProfileScreen() {
               <View style={styles.goalIconBox}>
                 <FontAwesome5 name="bullseye" size={15} color="#7C3AED" />
               </View>
-              <View>
+              <View style={{ flex: 1 }}>
                 <Text style={[styles.goalCardTitle, { color: theme.text }]}>
-                  Foco ENEM: {targetCourse || 'Medicina'}
+                  Foco ENEM: {targetCourse || 'Medicina'} {targetInstitution ? `• ${targetInstitution}` : ''}
                 </Text>
                 <Text style={[styles.goalCardSub, { color: theme.textMuted }]}>
-                  Meta TRI: {targetScore || 780} pts • Atual: {triEstimate} pts
+                  Corte ({targetModality || 'AC'}): {targetScore || 780} pts • Atual: {triEstimate} pts
                 </Text>
               </View>
             </View>
@@ -808,13 +831,15 @@ export default function ProfileScreen() {
               style={styles.editGoalBtn}
               onPress={() => {
                 setDraftCourse(targetCourse || 'Medicina');
+                setDraftInstitution(targetInstitution || 'USP');
+                setDraftModality(targetModality || 'AC');
                 setDraftScore(String(targetScore || 780));
                 setDraftBio(bio || 'Focado na aprovação no ENEM!');
                 setShowGoalModal(true);
               }}
             >
               <FontAwesome5 name="pen" size={10} color="#7C3AED" />
-              <Text style={styles.editGoalBtnText}>Editar</Text>
+              <Text style={styles.editGoalBtnText}>Escolher SISU</Text>
             </TouchableOpacity>
           </View>
 
@@ -831,6 +856,14 @@ export default function ProfileScreen() {
             {targetCourse || 'seu curso'}!
           </Text>
         </View>
+
+        {/* 2B. CURVA HISTÓRICA DE EVOLUÇÃO TRI */}
+        <TriHistoryChart
+          history={triHistory || []}
+          targetScore={targetScore || 780}
+          targetCourse={targetCourse || 'Medicina'}
+          targetInstitution={targetInstitution}
+        />
 
         {/* 3. ATALHOS RÁPIDOS DE ESTUDO E CONVERSAS */}
         <View style={styles.quickShortcutsRow}>
@@ -1138,11 +1171,33 @@ export default function ProfileScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Meu Objetivo no ENEM</Text>
+              <Text style={styles.modalTitle}>Meu Objetivo no ENEM / SISU</Text>
               <TouchableOpacity onPress={() => setShowGoalModal(false)}>
                 <FontAwesome5 name="times" size={16} color="#64748B" />
               </TouchableOpacity>
             </View>
+
+            <TouchableOpacity
+              onPress={() => setShowSisuPicker(true)}
+              activeOpacity={0.85}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                backgroundColor: '#EFF6FF',
+                borderColor: '#93C5FD',
+                borderWidth: 1,
+                borderRadius: 12,
+                paddingVertical: 11,
+                marginBottom: 14,
+              }}
+            >
+              <FontAwesome5 name="university" size={14} color="#1D4ED8" />
+              <Text style={{ color: '#1D4ED8', fontWeight: '800', fontSize: 13 }}>
+                Buscar Curso e Universidade no SISU (com Nota de Corte)
+              </Text>
+            </TouchableOpacity>
 
             <Text style={styles.inputLabel}>Curso Pretendido</Text>
             <TextInput
@@ -1150,6 +1205,15 @@ export default function ProfileScreen() {
               value={draftCourse}
               onChangeText={setDraftCourse}
               placeholder="Ex.: Medicina, Direito, Engenharia..."
+              placeholderTextColor="#94A3B8"
+            />
+
+            <Text style={styles.inputLabel}>Instituição / Universidade Pretendida</Text>
+            <TextInput
+              style={styles.textInput}
+              value={draftInstitution}
+              onChangeText={setDraftInstitution}
+              placeholder="Ex.: USP, UFRJ, UFMG, UnB..."
               placeholderTextColor="#94A3B8"
             />
 
@@ -1218,6 +1282,20 @@ export default function ProfileScreen() {
         cancelText="Cancelar"
         onConfirm={confirmLogoutAction}
         onCancel={() => setShowLogoutModal(false)}
+      />
+
+      <SisuCoursePickerModal
+        visible={showSisuPicker}
+        onClose={() => setShowSisuPicker(false)}
+        selectedCourse={draftCourse}
+        selectedInstitution={draftInstitution}
+        initialModality={draftModality}
+        onSelect={(entry) => {
+          setDraftCourse(entry.course);
+          setDraftInstitution(entry.institution);
+          setDraftModality(entry.modalityCode || 'AC');
+          setDraftScore(String(entry.cutoffScore));
+        }}
       />
     </SafeAreaView>
   );

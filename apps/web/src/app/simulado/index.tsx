@@ -19,7 +19,9 @@ import { useOfflineQueueStore } from '@/store/useOfflineQueueStore';
 import { getOfflinePackQuestions } from '@/services/offlinePack';
 import { QuestionContentRenderer } from '@/components/QuestionContentRenderer';
 import { OptionButton } from '@/components/OptionButton';
-import type { QuizQuestion } from '@minuto-enem/shared';
+import { SisuCoursePickerModal } from '@/components/SisuCoursePickerModal';
+import { TriHistoryChart } from '@/components/TriHistoryChart';
+import { searchSisuCourses, type QuizQuestion } from '@minuto-enem/shared';
 
 interface SimuladoPreset {
   id: string;
@@ -177,9 +179,15 @@ export default function SimuladoScreen() {
   const router = useRouter();
   const theme = useTheme();
   const targetCourse = useUserStore((s) => s.targetCourse || 'Medicina');
+  const targetInstitution = useUserStore((s) => s.targetInstitution || 'USP');
+  const targetModality = useUserStore((s) => s.targetModality || 'AC');
   const targetScore = useUserStore((s) => s.targetScore || 750);
+  const triHistory = useUserStore((s) => s.triHistory || []);
+  const setProfileMeta = useUserStore((s) => s.setProfileMeta);
+  const appendTriHistoryPoint = useUserStore((s) => s.appendTriHistoryPoint);
   const addXp = useUserStore((s) => s.addXp);
   const enqueueQuizAnswer = useOfflineQueueStore((s) => s.enqueueQuizAnswer);
+  const [showSisuModal, setShowSisuModal] = useState(false);
 
   const [stage, setStage] = useState<'SETUP' | 'RUNNING' | 'RESULT'>('SETUP');
   const [activePreset, setActivePreset] = useState<SimuladoPreset | null>(null);
@@ -382,6 +390,20 @@ export default function SimuladoScreen() {
     const earnedXp = result.correctCount * 15 + 40;
     addXp(earnedXp);
 
+    // Registra na curva histórica TRI do aluno (local + PostgreSQL)
+    appendTriHistoryPoint({
+      score: result.triScore,
+      label: activePreset?.title || 'Simulado ENEM',
+      accuracyPercent: result.accuracyPercent,
+    });
+    api
+      .post('/auth/tri-history', {
+        score: result.triScore,
+        label: activePreset?.title || 'Simulado ENEM',
+        accuracyPercent: result.accuracyPercent,
+      })
+      .catch(() => {});
+
     // Se for Simulado Institucional Unificado, registra entrega oficial na escola
     if (activeInstitutionalExamId) {
       const answerMapByQuestionId: Record<string, number> = {};
@@ -556,9 +578,29 @@ export default function SimuladoScreen() {
             <Text style={styles.heroTitle}>Treine como no Dia da Prova</Text>
             <Text style={styles.heroDesc}>
               Questões oficiais do ENEM (2009–2023) com imagens, cronômetro regressivo,
-              cartão-resposta para revisar depois e comparação direta com sua meta no SISU (
-              {targetCourse} • {targetScore} pts).
+              cartão-resposta e comparação direta com sua meta no SISU (
+              {targetCourse} • {targetInstitution} • {targetScore} pts).
             </Text>
+            <TouchableOpacity
+              onPress={() => setShowSisuModal(true)}
+              activeOpacity={0.85}
+              style={{
+                marginTop: 12,
+                alignSelf: 'flex-start',
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                backgroundColor: 'rgba(255,255,255,0.2)',
+                paddingHorizontal: 12,
+                paddingVertical: 7,
+                borderRadius: 10,
+              }}
+            >
+              <FontAwesome5 name="university" size={12} color="#FFF" />
+              <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '800' }}>
+                Trocar Curso / Instituição ({targetInstitution})
+              </Text>
+            </TouchableOpacity>
           </View>
 
           {!isLoading && institutionalExams.length > 0 && (
@@ -844,8 +886,8 @@ export default function SimuladoScreen() {
               />
               <Text style={styles.goalCompareText}>
                 {resultMetrics.triScore >= targetScore
-                  ? `Parabéns! Você superou sua meta para ${targetCourse} (${targetScore} pts) por +${resultMetrics.triScore - targetScore} pontos!`
-                  : `Sua meta em ${targetCourse} é ${targetScore} pts. Faltam ${targetScore - resultMetrics.triScore} pontos — continue praticando!`}
+                  ? `Parabéns! Você superou a nota de corte de ${targetCourse} (${targetInstitution} • ${targetScore} pts) por +${resultMetrics.triScore - targetScore} pontos!`
+                  : `Sua meta para ${targetCourse} (${targetInstitution}) é ${targetScore} pts. Faltam ${targetScore - resultMetrics.triScore} pontos — continue praticando!`}
               </Text>
             </View>
           </View>
@@ -894,20 +936,52 @@ export default function SimuladoScreen() {
               { backgroundColor: theme.surface, borderColor: theme.border },
             ]}
           >
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>
-              Simulador SISU — Notas de Corte de Referência
-            </Text>
-            <Text style={[styles.sectionSub, { color: theme.textMuted }]}>
-              Comparação da sua nota TRI ({resultMetrics.triScore} pts) com médias nacionais:
-            </Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.sectionTitle, { color: theme.text }]}>
+                  Simulador SISU — {targetCourse} nas Universidades
+                </Text>
+                <Text style={[styles.sectionSub, { color: theme.textMuted }]}>
+                  Comparação da sua nota TRI ({resultMetrics.triScore} pts) com cortes recentes:
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowSisuModal(true)}
+                style={{
+                  backgroundColor: '#EFF6FF',
+                  borderColor: '#93C5FD',
+                  borderWidth: 1,
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                  borderRadius: 10,
+                }}
+              >
+                <Text style={{ fontSize: 11.5, fontWeight: '800', color: '#1D4ED8' }}>
+                  Explorar Tudo
+                </Text>
+              </TouchableOpacity>
+            </View>
 
             <View style={{ marginTop: 12, gap: 10 }}>
-              {SISU_REFERENCE_COURSES.map((c) => {
-                const passed = resultMetrics.triScore >= c.cutoff;
-                const diff = resultMetrics.triScore - c.cutoff;
+              {(searchSisuCourses({ course: targetCourse, modality: targetModality, limit: 8 }).length > 0
+                ? searchSisuCourses({ course: targetCourse, modality: targetModality, limit: 8 }).map((item) => ({
+                    key: item.id,
+                    title: `${item.course} (${item.institution})`,
+                    sub: `${item.city}/${item.state} • ${item.modalityCode || 'AC'} • Corte: ${item.cutoffScore} pts`,
+                    cutoff: item.cutoffScore,
+                  }))
+                : SISU_REFERENCE_COURSES.map((c) => ({
+                    key: c.course,
+                    title: c.course,
+                    sub: `Corte médio: ${c.cutoff} pts`,
+                    cutoff: c.cutoff,
+                  }))
+              ).map((row) => {
+                const passed = resultMetrics.triScore >= row.cutoff;
+                const diff = resultMetrics.triScore - row.cutoff;
                 return (
                   <View
-                    key={c.course}
+                    key={row.key}
                     style={[
                       styles.sisuRow,
                       {
@@ -918,16 +992,16 @@ export default function SimuladoScreen() {
                   >
                     <View style={styles.sisuLeft}>
                       <FontAwesome5
-                        name={c.icon}
+                        name="university"
                         size={14}
                         color={passed ? '#16A34A' : theme.textMuted}
                       />
                       <View>
                         <Text style={[styles.sisuCourse, { color: theme.text }]}>
-                          {c.course}
+                          {row.title}
                         </Text>
                         <Text style={{ fontSize: 11.5, color: theme.textMuted }}>
-                          Corte médio: {c.cutoff} pts
+                          {row.sub}
                         </Text>
                       </View>
                     </View>
@@ -953,6 +1027,13 @@ export default function SimuladoScreen() {
               })}
             </View>
           </View>
+
+          <TriHistoryChart
+            history={triHistory}
+            targetScore={targetScore}
+            targetCourse={targetCourse}
+            targetInstitution={targetInstitution}
+          />
 
           <TouchableOpacity
             onPress={() => setStage('SETUP')}
@@ -1051,6 +1132,29 @@ export default function SimuladoScreen() {
           </View>
         </View>
       </Modal>
+      <SisuCoursePickerModal
+        visible={showSisuModal}
+        onClose={() => setShowSisuModal(false)}
+        selectedCourse={targetCourse}
+        selectedInstitution={targetInstitution}
+        initialModality={targetModality}
+        onSelect={async (entry) => {
+          setProfileMeta({
+            targetCourse: entry.course,
+            targetInstitution: entry.institution,
+            targetModality: entry.modalityCode || 'AC',
+            targetScore: entry.cutoffScore,
+          });
+          try {
+            await api.patch('/auth/goals', {
+              targetCourse: entry.course,
+              targetInstitution: entry.institution,
+              targetModality: entry.modalityCode || 'AC',
+              targetScore: entry.cutoffScore,
+            });
+          } catch {}
+        }}
+      />
     </SafeAreaView>
   );
 }

@@ -1,5 +1,10 @@
-import { useThemedStyles } from '@/hooks/use-theme';
+import { useThemedStyles, useTheme } from '@/hooks/use-theme';
 import React, { useState } from 'react';
+import {
+  SISU_INSTITUTIONS,
+  SISU_COURSE_DEFINITIONS,
+  SISU_MODALITIES,
+} from '@minuto-enem/shared';
 import {
   View,
   Text,
@@ -46,13 +51,80 @@ interface SchoolsResponse {
 
 export default function AdminSchoolsScreen() {
   const styles = useThemedStyles(baseStyles);
+  const theme = useTheme();
   const router = useRouter();
   const queryClient = useQueryClient();
 
+  const [adminTab, setAdminTab] = useState<'SCHOOLS' | 'TENANTS' | 'QUESTIONS' | 'SISU'>('SCHOOLS');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
   const [modalVisible, setModalVisible] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+  const [recalibrating, setRecalibrating] = useState(false);
+
+  // Form de atualização dinâmica de notas SISU
+  const [sisuInst, setSisuInst] = useState('USP');
+  const [sisuCourseSlug, setSisuCourseSlug] = useState('medicina');
+  const [sisuModality, setSisuModality] = useState('AC');
+  const [sisuScore, setSisuScore] = useState('840');
+  const [sisuEdition, setSisuEdition] = useState('SISU 2026');
+  const [savingSisu, setSavingSisu] = useState(false);
+
+  const { data: tenantsData, refetch: refetchTenants } = useQuery<any>({
+    queryKey: ['admin-tenants-overview'],
+    queryFn: () => api.get('/admin/tenants/overview'),
+    enabled: adminTab === 'TENANTS',
+  });
+
+  const { data: qHealthData, refetch: refetchQHealth } = useQuery<any>({
+    queryKey: ['admin-questions-health'],
+    queryFn: () => api.get('/admin/questions/health'),
+    enabled: adminTab === 'QUESTIONS',
+  });
+
+  const { data: sisuOverrides = [], refetch: refetchSisuOverrides } = useQuery<any[]>({
+    queryKey: ['admin-sisu-overrides'],
+    queryFn: () => api.get('/admin/sisu/overrides'),
+    enabled: adminTab === 'SISU',
+  });
+
+  const handleRecalibrateQuestions = async () => {
+    setRecalibrating(true);
+    try {
+      const res = await api.post<{ message: string }>('/admin/questions/recalibrate', {});
+      refetchQHealth();
+      if (Platform.OS === 'web') window.alert(res.message);
+      else Alert.alert('Recalibração concluída', res.message);
+    } catch (err: any) {
+      const msg = err?.message || 'Erro ao recalibrar questões.';
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('Erro', msg);
+    } finally {
+      setRecalibrating(false);
+    }
+  };
+
+  const handleSaveSisuOverride = async () => {
+    setSavingSisu(true);
+    try {
+      await api.put('/admin/sisu/overrides', {
+        institution: sisuInst,
+        courseSlug: sisuCourseSlug,
+        modality: sisuModality,
+        cutoffScore: Number(sisuScore) || 750,
+        referenceEdition: sisuEdition,
+      });
+      refetchSisuOverrides();
+      if (Platform.OS === 'web') window.alert('Nota de corte SISU atualizada com sucesso!');
+      else Alert.alert('Salvo!', 'Nota de corte SISU atualizada em tempo real.');
+    } catch (err: any) {
+      const msg = err?.message || 'Erro ao atualizar nota SISU.';
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('Erro', msg);
+    } finally {
+      setSavingSisu(false);
+    }
+  };
 
   // Consulta de escolas
   const { data, isLoading, isError, refetch } = useQuery<SchoolsResponse>({
@@ -147,8 +219,48 @@ export default function AdminSchoolsScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Search and Filters Bar */}
-        <View style={styles.filtersBar}>
+        {/* Barra de Abas Administrativas */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={{ maxHeight: 50, backgroundColor: theme.surface, borderBottomWidth: 1, borderBottomColor: theme.border }}
+          contentContainerStyle={{ paddingHorizontal: 16, alignItems: 'center', gap: 8 }}
+        >
+          {(
+            [
+              { key: 'SCHOOLS', label: 'Escolas', icon: 'school' },
+              { key: 'TENANTS', label: 'Tenants & Storage', icon: 'server' },
+              { key: 'QUESTIONS', label: 'Saúde Questões', icon: 'stethoscope' },
+              { key: 'SISU', label: 'Notas SISU', icon: 'university' },
+            ] as const
+          ).map((t) => {
+            const active = adminTab === t.key;
+            return (
+              <TouchableOpacity
+                key={t.key}
+                onPress={() => setAdminTab(t.key)}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 6,
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                  borderRadius: 999,
+                  backgroundColor: active ? '#7C3AED' : theme.surfaceMuted,
+                }}
+              >
+                <FontAwesome5 name={t.icon} size={11} color={active ? '#FFF' : theme.textMuted} />
+                <Text style={{ fontSize: 12, fontWeight: '800', color: active ? '#FFF' : theme.textMuted }}>
+                  {t.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
+        {/* Search and Filters Bar (somente na aba Escolas) */}
+        {adminTab === 'SCHOOLS' && (
+          <View style={styles.filtersBar}>
           <View style={styles.searchBox}>
             <FontAwesome5 name="search" size={14} color="#9CA3AF" style={{ marginRight: 10 }} />
             <TextInput
@@ -194,6 +306,7 @@ export default function AdminSchoolsScreen() {
             </TouchableOpacity>
           </View>
         </View>
+        )}
 
         {/* Content List */}
         <ScrollView
@@ -201,7 +314,296 @@ export default function AdminSchoolsScreen() {
           contentContainerStyle={styles.scrollInner}
           showsVerticalScrollIndicator={false}
         >
-          {isLoading ? (
+          {adminTab === 'TENANTS' && (
+            <View style={{ gap: 12 }}>
+              <View style={{ backgroundColor: theme.surface, borderColor: theme.border, borderWidth: 1, borderRadius: 16, padding: 16 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={{ fontSize: 16, fontWeight: '800', color: theme.text }}>
+                    Monitoramento Global de Tenants & Storage
+                  </Text>
+                  <TouchableOpacity onPress={() => refetchTenants()}>
+                    <FontAwesome5 name="sync-alt" size={13} color={theme.primary} />
+                  </TouchableOpacity>
+                </View>
+                <Text style={{ fontSize: 12.5, color: theme.textMuted, marginTop: 4 }}>
+                  Provedor de Storage ativo: <Text style={{ fontWeight: '800', color: theme.primary }}>{String(tenantsData?.storageProvider || 'local').toUpperCase()}</Text>
+                </Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12 }}>
+                  {[
+                    { label: 'Escolas Ativas', value: tenantsData?.summary?.schoolsActive ?? 0, color: '#16A34A' },
+                    { label: 'Usuários Ativos', value: tenantsData?.summary?.usersActive ?? 0, color: '#0284C7' },
+                    { label: 'Redações (Storage)', value: tenantsData?.summary?.essaysCount ?? 0, color: '#7C3AED' },
+                    { label: 'Áudios Devolutiva', value: tenantsData?.summary?.audioFeedbacksCount ?? 0, color: '#EA580C' },
+                    { label: 'PDFs de Turmas', value: tenantsData?.summary?.pdfsCount ?? 0, color: '#D97706' },
+                  ].map((kpi) => (
+                    <View
+                      key={kpi.label}
+                      style={{
+                        minWidth: 130,
+                        flex: 1,
+                        padding: 12,
+                        borderRadius: 12,
+                        backgroundColor: theme.surfaceMuted,
+                        borderWidth: 1,
+                        borderColor: theme.border,
+                      }}
+                    >
+                      <Text style={{ fontSize: 20, fontWeight: '900', color: kpi.color }}>{kpi.value}</Text>
+                      <Text style={{ fontSize: 11.5, fontWeight: '700', color: theme.textMuted }}>{kpi.label}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+
+              {(tenantsData?.tenants || []).map((t: any) => (
+                <View
+                  key={t.id}
+                  style={{
+                    backgroundColor: theme.surface,
+                    borderColor: theme.border,
+                    borderWidth: 1,
+                    borderRadius: 14,
+                    padding: 14,
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                  }}
+                >
+                  <View>
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: theme.text }}>
+                      {t.name} ({t.code})
+                    </Text>
+                    <Text style={{ fontSize: 12, color: theme.textMuted, marginTop: 2 }}>
+                      {t.usersCount} usuários • {t.classroomsCount} turmas • {t.examsCount} simulados
+                    </Text>
+                  </View>
+                  <Text style={{ fontSize: 11.5, fontWeight: '800', color: t.isActive ? '#16A34A' : '#DC2626' }}>
+                    {t.isActive ? 'ATIVA' : 'INATIVA'}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {adminTab === 'QUESTIONS' && (
+            <View style={{ gap: 12 }}>
+              <View style={{ backgroundColor: theme.surface, borderColor: theme.border, borderWidth: 1, borderRadius: 16, padding: 16 }}>
+                <Text style={{ fontSize: 16, fontWeight: '800', color: theme.text }}>
+                  Curadoria e Saúde do Banco de Questões
+                </Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12 }}>
+                  {[
+                    { label: 'Total Questões', value: qHealthData?.totalQuestions ?? 0, color: '#0284C7' },
+                    { label: 'Sem Explicação', value: qHealthData?.withoutExplanation ?? 0, color: '#D97706' },
+                    { label: 'Sem Dificuldade', value: qHealthData?.withoutDifficulty ?? 0, color: '#7C3AED' },
+                    { label: 'Erro Anômalo (>=80%)', value: qHealthData?.highErrorCount ?? 0, color: '#DC2626' },
+                  ].map((item) => (
+                    <View
+                      key={item.label}
+                      style={{
+                        minWidth: 130,
+                        flex: 1,
+                        padding: 12,
+                        borderRadius: 12,
+                        backgroundColor: theme.surfaceMuted,
+                        borderWidth: 1,
+                        borderColor: theme.border,
+                      }}
+                    >
+                      <Text style={{ fontSize: 20, fontWeight: '900', color: item.color }}>{item.value}</Text>
+                      <Text style={{ fontSize: 11.5, fontWeight: '700', color: theme.textMuted }}>{item.label}</Text>
+                    </View>
+                  ))}
+                </View>
+
+                <TouchableOpacity
+                  disabled={recalibrating}
+                  onPress={handleRecalibrateQuestions}
+                  style={{
+                    marginTop: 14,
+                    backgroundColor: '#7C3AED',
+                    paddingVertical: 11,
+                    borderRadius: 12,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 13 }}>
+                    {recalibrating ? 'Recalibrando...' : 'Recalibrar Dificuldades pelo ErrorRate Real'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {(qHealthData?.flaggedQuestions || []).slice(0, 12).map((q: any) => (
+                <View
+                  key={q.id}
+                  style={{
+                    backgroundColor: theme.surface,
+                    borderColor: theme.border,
+                    borderWidth: 1,
+                    borderRadius: 14,
+                    padding: 13,
+                  }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: theme.primary }}>
+                    {q.subject} ({q.year}) • {q.difficulty || 'SEM NÍVEL'} • Erro:{' '}
+                    {typeof q.errorRate === 'number' ? `${Math.round(q.errorRate * 100)}%` : 'N/D'}
+                  </Text>
+                  <Text numberOfLines={2} style={{ fontSize: 12.5, color: theme.text, marginTop: 4 }}>
+                    {q.text}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {adminTab === 'SISU' && (
+            <View style={{ gap: 12 }}>
+              <View style={{ backgroundColor: theme.surface, borderColor: theme.border, borderWidth: 1, borderRadius: 16, padding: 16, gap: 10 }}>
+                <Text style={{ fontSize: 16, fontWeight: '800', color: theme.text }}>
+                  Atualização Dinâmica de Notas de Corte SISU
+                </Text>
+                <Text style={{ fontSize: 12, color: theme.textMuted }}>
+                  Altere a nota de corte de qualquer curso/universidade/modalidade sem precisar de novo deploy:
+                </Text>
+
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+                  {SISU_INSTITUTIONS.slice(0, 14).map((i) => (
+                    <TouchableOpacity
+                      key={i.sigla}
+                      onPress={() => setSisuInst(i.sigla)}
+                      style={{
+                        paddingHorizontal: 10,
+                        paddingVertical: 6,
+                        borderRadius: 8,
+                        backgroundColor: sisuInst === i.sigla ? '#7C3AED' : theme.surfaceMuted,
+                      }}
+                    >
+                      <Text style={{ fontSize: 11.5, fontWeight: '800', color: sisuInst === i.sigla ? '#FFF' : theme.text }}>
+                        {i.sigla}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+                  {SISU_COURSE_DEFINITIONS.slice(0, 12).map((c) => (
+                    <TouchableOpacity
+                      key={c.slug}
+                      onPress={() => setSisuCourseSlug(c.slug)}
+                      style={{
+                        paddingHorizontal: 10,
+                        paddingVertical: 6,
+                        borderRadius: 8,
+                        backgroundColor: sisuCourseSlug === c.slug ? '#0284C7' : theme.surfaceMuted,
+                      }}
+                    >
+                      <Text style={{ fontSize: 11.5, fontWeight: '800', color: sisuCourseSlug === c.slug ? '#FFF' : theme.text }}>
+                        {c.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+                  {SISU_MODALITIES.map((m) => (
+                    <TouchableOpacity
+                      key={m.code}
+                      onPress={() => setSisuModality(m.code)}
+                      style={{
+                        paddingHorizontal: 10,
+                        paddingVertical: 6,
+                        borderRadius: 8,
+                        backgroundColor: sisuModality === m.code ? '#D97706' : theme.surfaceMuted,
+                      }}
+                    >
+                      <Text style={{ fontSize: 11.5, fontWeight: '800', color: sisuModality === m.code ? '#FFF' : theme.text }}>
+                        {m.shortLabel}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <TextInput
+                    style={{
+                      flex: 1,
+                      borderWidth: 1,
+                      borderColor: theme.border,
+                      backgroundColor: theme.surfaceMuted,
+                      color: theme.text,
+                      borderRadius: 10,
+                      paddingHorizontal: 12,
+                      paddingVertical: 9,
+                    }}
+                    keyboardType="numeric"
+                    value={sisuScore}
+                    onChangeText={setSisuScore}
+                    placeholder="Nota de corte (ex: 840)"
+                    placeholderTextColor={theme.textMuted}
+                  />
+                  <TextInput
+                    style={{
+                      flex: 1,
+                      borderWidth: 1,
+                      borderColor: theme.border,
+                      backgroundColor: theme.surfaceMuted,
+                      color: theme.text,
+                      borderRadius: 10,
+                      paddingHorizontal: 12,
+                      paddingVertical: 9,
+                    }}
+                    value={sisuEdition}
+                    onChangeText={setSisuEdition}
+                    placeholder="Edição (ex: SISU 2026)"
+                    placeholderTextColor={theme.textMuted}
+                  />
+                </View>
+
+                <TouchableOpacity
+                  disabled={savingSisu}
+                  onPress={handleSaveSisuOverride}
+                  style={{
+                    backgroundColor: '#16A34A',
+                    paddingVertical: 11,
+                    borderRadius: 12,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 13 }}>
+                    {savingSisu ? 'Salvando...' : `Salvar Corte (${sisuInst} • ${sisuCourseSlug} • ${sisuModality})`}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {sisuOverrides.map((ov: any) => (
+                <View
+                  key={ov.id}
+                  style={{
+                    backgroundColor: theme.surface,
+                    borderColor: theme.border,
+                    borderWidth: 1,
+                    borderRadius: 12,
+                    padding: 12,
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                  }}
+                >
+                  <View>
+                    <Text style={{ fontSize: 13, fontWeight: '800', color: theme.text }}>
+                      {ov.institution} • {ov.courseSlug} ({ov.modality})
+                    </Text>
+                    <Text style={{ fontSize: 11.5, color: theme.textMuted }}>{ov.referenceEdition}</Text>
+                  </View>
+                  <Text style={{ fontSize: 15, fontWeight: '900', color: '#16A34A' }}>
+                    {ov.cutoffScore} pts
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {adminTab === 'SCHOOLS' && (isLoading ? (
             <View style={styles.skeletonList}>
               {[1, 2, 3, 4].map((i) => (
                 <View key={i} style={styles.skeletonCard}>
@@ -363,7 +765,7 @@ export default function AdminSchoolsScreen() {
                 );
               })}
             </View>
-          )}
+          ))}
         </ScrollView>
 
         {/* Modal de Cadastro de Nova Escola */}

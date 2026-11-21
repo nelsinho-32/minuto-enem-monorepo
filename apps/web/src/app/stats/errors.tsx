@@ -1,5 +1,5 @@
-import { useThemedStyles } from '@/hooks/use-theme';
-import React, { useMemo } from 'react';
+import { useThemedStyles, useTheme } from '@/hooks/use-theme';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -7,13 +7,15 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  Platform,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { safeAsyncStorage as AsyncStorage } from '@/services/safeStorage';
-import { api } from '@/services/api';
+import { api, BASE_URL } from '@/services/api';
 
 const ERROR_STATS_CACHE_KEY = '@minuto_enem:error_stats_cache_v1';
 
@@ -94,8 +96,89 @@ export async function fetchErrorStatsFromApi(): Promise<ErrorStatsApiResponse> {
 
 export default function ErrorsScreen() {
   const styles = useThemedStyles(baseStyles);
+  const theme = useTheme();
   const router = useRouter();
   const { area } = useLocalSearchParams<{ area: string }>();
+  const [playingFbId, setPlayingFbId] = useState<string | null>(null);
+  const audioRef = useRef<any>(null);
+
+  const { data: notebookData } = useQuery<{
+    total: number;
+    items: Array<{
+      questionId: string;
+      errorCount: number;
+      question: { id: string; subject: string; year: number; text: string };
+      teacherFeedbacks: Array<{
+        id: string;
+        commentText: string;
+        audioUrl?: string | null;
+        teacherName: string;
+        classroomId: string;
+        classroomName: string;
+      }>;
+    }>;
+  }>({
+    queryKey: ['error-notebook-with-feedbacks'],
+    queryFn: () => api.get('/questions/error-notebook').catch(() => ({ total: 0, items: [] })),
+    staleTime: 1000 * 60,
+  });
+
+  const feedbacksFromErrors = useMemo(() => {
+    const list: Array<{
+      id: string;
+      subject: string;
+      year: number;
+      questionText: string;
+      commentText: string;
+      audioUrl?: string | null;
+      teacherName: string;
+      classroomId: string;
+      classroomName: string;
+    }> = [];
+    for (const item of notebookData?.items || []) {
+      for (const fb of item.teacherFeedbacks || []) {
+        list.push({
+          id: fb.id,
+          subject: item.question.subject,
+          year: item.question.year,
+          questionText: item.question.text,
+          commentText: fb.commentText,
+          audioUrl: fb.audioUrl,
+          teacherName: fb.teacherName,
+          classroomId: fb.classroomId,
+          classroomName: fb.classroomName,
+        });
+      }
+    }
+    return list;
+  }, [notebookData]);
+
+  const handleToggleNotebookAudio = (fbId: string, rawUrl?: string | null) => {
+    if (!rawUrl) return;
+    if (audioRef.current) {
+      try {
+        audioRef.current.pause();
+      } catch {}
+      audioRef.current = null;
+    }
+    if (playingFbId === fbId) {
+      setPlayingFbId(null);
+      return;
+    }
+    const resolvedUrl = rawUrl.startsWith('/') ? `${BASE_URL}${rawUrl}` : rawUrl;
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof (window as any).Audio === 'function') {
+      const audio = new (window as any).Audio(resolvedUrl);
+      audioRef.current = audio;
+      setPlayingFbId(fbId);
+      audio.onended = () => setPlayingFbId(null);
+      audio.onerror = () => setPlayingFbId(null);
+      audio.play().catch(() => setPlayingFbId(null));
+      return;
+    }
+    if (resolvedUrl.startsWith('http')) {
+      Linking.openURL(resolvedUrl).catch(() => {});
+    }
+  };
 
   const { data, isLoading, error, refetch } = useQuery<ErrorStatsApiResponse, Error>({
     queryKey: ['error-stats'],
@@ -307,6 +390,86 @@ export default function ErrorsScreen() {
                     </Text>
                   </View>
                 </TouchableOpacity>
+              )}
+
+              {/* 3B. DEVOLUTIVAS DO PROFESSOR SOBRE SEUS ERROS (ÁUDIO & COMENTÁRIOS) */}
+              {feedbacksFromErrors.length > 0 && (
+                <View style={{ marginBottom: 18 }}>
+                  <Text style={styles.sectionTitle}>
+                    Devolutivas do Professor sobre seus Erros ({feedbacksFromErrors.length})
+                  </Text>
+                  <Text style={styles.sectionSub}>
+                    Explicações gravadas ou comentadas pelos docentes das suas turmas:
+                  </Text>
+                  <View style={{ gap: 10 }}>
+                    {feedbacksFromErrors.map((fb) => {
+                      const isPlaying = playingFbId === fb.id;
+                      return (
+                        <View
+                          key={fb.id}
+                          style={{
+                            backgroundColor: theme.surface,
+                            borderColor: theme.border,
+                            borderWidth: 1,
+                            borderRadius: 14,
+                            padding: 13,
+                            gap: 6,
+                          }}
+                        >
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Text style={{ fontSize: 12, fontWeight: '800', color: theme.primary }}>
+                              {fb.subject} ({fb.year}) • {fb.classroomName}
+                            </Text>
+                            <Text style={{ fontSize: 11, color: theme.textMuted }}>
+                              Prof. {fb.teacherName}
+                            </Text>
+                          </View>
+                          <Text numberOfLines={2} style={{ fontSize: 12, color: theme.textMuted }}>
+                            “{fb.questionText}”
+                          </Text>
+                          <Text style={{ fontSize: 13, color: theme.text, lineHeight: 18 }}>
+                            {fb.commentText}
+                          </Text>
+                          <View style={{ flexDirection: 'row', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
+                            {fb.audioUrl && (
+                              <TouchableOpacity
+                                onPress={() => handleToggleNotebookAudio(fb.id, fb.audioUrl)}
+                                style={{
+                                  flexDirection: 'row',
+                                  alignItems: 'center',
+                                  gap: 6,
+                                  paddingHorizontal: 11,
+                                  paddingVertical: 7,
+                                  borderRadius: 999,
+                                  backgroundColor: isPlaying ? '#DC2626' : '#0284C7',
+                                }}
+                              >
+                                <FontAwesome5 name={isPlaying ? 'pause' : 'play'} size={10} color="#FFF" />
+                                <Text style={{ color: '#FFF', fontSize: 11.5, fontWeight: '800' }}>
+                                  {isPlaying ? 'Pausar Áudio' : 'Ouvir Áudio do Professor'}
+                                </Text>
+                              </TouchableOpacity>
+                            )}
+                            <TouchableOpacity
+                              onPress={() => router.push(`/classes/${fb.classroomId}` as any)}
+                              style={{
+                                paddingHorizontal: 11,
+                                paddingVertical: 7,
+                                borderRadius: 999,
+                                borderWidth: 1,
+                                borderColor: theme.border,
+                              }}
+                            >
+                              <Text style={{ color: theme.text, fontSize: 11.5, fontWeight: '700' }}>
+                                Abrir Turma
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </View>
+                </View>
               )}
 
               {/* 4. LISTA DE MATÉRIAS (CLICÁVEL PARA ABRIR NOVA TELA POR ASSUNTOS) */}

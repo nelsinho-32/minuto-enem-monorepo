@@ -29,18 +29,26 @@ function extractHost(candidate?: string | null): string | null {
   return host;
 }
 
+function isPrivateOrLocalUrl(url: string): boolean {
+  const host = extractHost(url);
+  if (!host) return true; // localhost, 127.0.0.1 ou inválido
+  return (
+    host.startsWith('192.168.') ||
+    host.startsWith('10.') ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(host)
+  );
+}
+
 /**
  * Resolve a URL da API automaticamente:
- * 1. Se EXPO_PUBLIC_API_URL estiver definida (ex.: produção ou túnel), usa ela.
- * 2. Se estiver rodando no navegador (Web / Safari no iOS / Chrome no Android),
- *    usa o próprio hostname da página (ex.: 192.168.1.18) apontando para a porta 3333.
- * 3. Se estiver em dispositivo móvel físico (iOS no Expo Go ou Android),
- *    extrai o IP da máquina de desenvolvimento a partir do scriptURL do Metro ou do linkingUri.
- * 4. Fallbacks para emulador Android (10.0.2.2) ou simulador iOS/Desktop (localhost).
+ * 1. Se estiver no navegador em localhost/127.0.0.1, usa localhost:3333.
+ * 2. Se EXPO_PUBLIC_API_URL for pública (HTTPS/produção/túnel), usa ela diretamente.
+ * 3. Em rede local (Wi-Fi), prioriza o host vivo detectado pelo navegador ou pelo Metro (Expo Go)
+ *    para funcionar automaticamente mesmo quando o usuário muda de rede sem editar o .env.
+ * 4. Fallbacks para EXPO_PUBLIC_API_URL, emulador Android (10.0.2.2) ou localhost.
  */
 function resolveBaseUrl(): string {
   // 1. Navegador Web rodando localmente no computador (localhost / 127.0.0.1)
-  // Garante funcionamento instantâneo mesmo com firewall ou troca de Wi-Fi
   if (
     typeof window !== 'undefined' &&
     (window.location?.hostname === 'localhost' ||
@@ -49,10 +57,12 @@ function resolveBaseUrl(): string {
     return `http://localhost:${API_PORT}`;
   }
 
-  const envUrl = process.env.EXPO_PUBLIC_API_URL;
-  if (envUrl) return envUrl.replace(/\/+$/, '');
+  const envUrl = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/+$/, '');
+  if (envUrl && !isPrivateOrLocalUrl(envUrl)) {
+    return envUrl;
+  }
 
-  // 2. Navegador Web (Safari no iPhone, Chrome no PC/Android, etc.)
+  // 2. Navegador Web em IP da rede local (Safari no iPhone, Chrome no celular/PC)
   if (typeof window !== 'undefined' && window.location?.hostname) {
     const webHost = window.location.hostname;
     if (webHost && webHost !== 'localhost' && webHost !== '127.0.0.1') {
@@ -61,20 +71,18 @@ function resolveBaseUrl(): string {
     }
   }
 
-  // 2. Dispositivo Nativo (Expo Go / React Native no iOS ou Android)
+  // 3. Dispositivo Nativo (Expo Go): extrai automaticamente o IPv4 atual do servidor Metro
   const scriptURL = NativeModules?.SourceCode?.scriptURL;
   const hostFromScript = extractHost(scriptURL);
   if (hostFromScript) {
     return `http://${hostFromScript}:${API_PORT}`;
   }
 
-  // 3. LinkingUri ou ExperienceUrl (Expo Go)
   const hostFromLinking = extractHost(Constants.linkingUri) ?? extractHost(Constants.experienceUrl);
   if (hostFromLinking) {
     return `http://${hostFromLinking}:${API_PORT}`;
   }
 
-  // 4. Configurações legadas ou manifest do Expo
   const hostUri =
     Constants.expoConfig?.hostUri ??
     (Constants as any).expoGoConfig?.debuggerHost ??
@@ -84,6 +92,9 @@ function resolveBaseUrl(): string {
   if (hostFromConfig) {
     return `http://${hostFromConfig}:${API_PORT}`;
   }
+
+  // 4. Fallback para EXPO_PUBLIC_API_URL do .env caso o runtime não tenha exposto o host
+  if (envUrl) return envUrl;
 
   // 5. Emulador Android
   if (Platform.OS === 'android') return `http://10.0.2.2:${API_PORT}`;
@@ -101,12 +112,20 @@ interface RequestOptions extends RequestInit {
 }
 
 let authTokenProvider: (() => string | null) | null = null;
+let accountDisabledHandler: ((reason: string) => void) | null = null;
 
 /**
  * Registra o provedor de token JWT vindo da store de autenticação.
  */
 export function registerAuthTokenProvider(provider: () => string | null) {
   authTokenProvider = provider;
+}
+
+/**
+ * Registra o callback automático para deslogar caso a conta seja desativada (403).
+ */
+export function registerAccountDisabledHandler(handler: (reason: string) => void) {
+  accountDisabledHandler = handler;
 }
 
 async function request<T = any>(
@@ -150,6 +169,17 @@ async function request<T = any>(
         data?.error ||
         data?.message ||
         `Erro na requisição (${response.status})`;
+
+      if (
+        response.status === 403 &&
+        typeof errorMessage === 'string' &&
+        errorMessage.toLowerCase().includes('desativada') &&
+        !normalizedEndpoint.includes('/auth/login') &&
+        !normalizedEndpoint.includes('/login')
+      ) {
+        accountDisabledHandler?.(errorMessage);
+      }
+
       throw new Error(errorMessage);
     }
 

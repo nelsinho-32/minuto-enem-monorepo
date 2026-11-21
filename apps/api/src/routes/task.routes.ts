@@ -3,6 +3,7 @@ import { taskController } from "../controllers/task.controller";
 import { essayController } from "../controllers/essay.controller";
 import { auth } from "../middlewares/auth.middleware";
 import { uploadEssayImageMiddleware } from "../middlewares/upload.middleware";
+import { taskService } from "../services/task.service";
 
 const taskRoutes = Router();
 
@@ -17,6 +18,9 @@ taskRoutes.get("/questions/filter", (req, res) =>
   taskController.filterQuestions(req, res)
 );
 
+// Agenda / Calendário Unificado de Entregas (deve vir antes de /:id)
+taskRoutes.get("/calendar", (req, res) => taskController.calendar(req, res));
+
 // Listagem de tarefas (geral ou por turma)
 taskRoutes.get("/", (req, res) => taskController.list(req, res));
 taskRoutes.get("/classroom/:classId", (req, res) =>
@@ -27,6 +31,24 @@ taskRoutes.get("/classroom/:classId", (req, res) =>
 taskRoutes.post("/:taskId/submit", (req, res) =>
   taskController.submit(req, res)
 );
+
+// Cobrança rápida em 1 clique apenas para alunos pendentes (Professor/Escola)
+taskRoutes.post("/:taskId/remind-pending", async (req, res) => {
+  try {
+    const result = await taskService.remindPendingStudents({
+      taskId: String(req.params.taskId),
+      requesterId: req.user!.id,
+      role: req.user!.role,
+      schoolId: req.schoolId || req.user!.schoolId,
+    });
+    return res.status(200).json(result);
+  } catch (err: any) {
+    const status = typeof err?.statusCode === "number" ? err.statusCode : 500;
+    return res
+      .status(status)
+      .json({ error: err?.message || "Erro ao notificar alunos pendentes." });
+  }
+});
 
 // Envio de redação da Oficina Nota 1000 vinculado à tarefa
 taskRoutes.post("/:taskId/essay", uploadEssayImageMiddleware, (req, res) =>

@@ -9,9 +9,13 @@ import {
   requireClassroomTeacherScope,
 } from "../middlewares/auth.middleware";
 import { uploadRateLimiter } from "../middlewares/rate-limit.middleware";
-import { uploadPdfMiddleware } from "../middlewares/upload.middleware";
+import {
+  uploadPdfMiddleware,
+  uploadOptionalAudioMiddleware,
+} from "../middlewares/upload.middleware";
 import { pdfReportService } from "../services/pdf-report.service";
 import { schoolOpsService } from "../services/school-ops.service";
+import { classroomFeedbackService } from "../services/classroom-feedback.service";
 
 const classroomRoutes = Router();
 
@@ -144,6 +148,51 @@ classroomRoutes.get(
       return res
         .status(status)
         .json({ error: err?.message || "Erro ao gerar relatório PDF da turma." });
+    }
+  }
+);
+
+// Devolutiva em Áudio ou Comentário por Questão Errada da Turma
+classroomRoutes.get("/:id/question-feedback", auth, async (req, res) => {
+  try {
+    const data = await classroomFeedbackService.listClassroomFeedbacks({
+      classroomId: String(req.params.id),
+      requesterId: req.user!.id,
+      role: req.user!.role,
+      schoolId: req.schoolId || req.user!.schoolId,
+    });
+    return res.json(data);
+  } catch (err: any) {
+    const status = typeof err?.statusCode === "number" ? err.statusCode : 500;
+    return res
+      .status(status)
+      .json({ error: err?.message || "Erro ao carregar devolutivas da turma." });
+  }
+});
+
+classroomRoutes.post(
+  "/:id/question-feedback",
+  auth,
+  requireRole([Role.TEACHER, Role.SCHOOL, Role.ADMIN]),
+  uploadRateLimiter,
+  uploadOptionalAudioMiddleware,
+  async (req, res) => {
+    try {
+      const created = await classroomFeedbackService.createQuestionFeedback({
+        classroomId: String(req.params.id),
+        teacherId: req.user!.id,
+        role: req.user!.role,
+        questionId: String(req.body?.questionId || ""),
+        commentText: String(req.body?.commentText || ""),
+        audioUrl: req.body?.audioUrl ? String(req.body.audioUrl) : null,
+        audioFile: req.file,
+      });
+      return res.status(201).json(created);
+    } catch (err: any) {
+      const status = typeof err?.statusCode === "number" ? err.statusCode : 500;
+      return res
+        .status(status)
+        .json({ error: err?.message || "Erro ao enviar devolutiva." });
     }
   }
 );

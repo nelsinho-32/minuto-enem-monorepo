@@ -64,6 +64,45 @@ export default function StudyPlanScreen() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
+  // Modo Foco / Pomodoro integrado ao cronograma
+  const [pomodoroMode, setPomodoroMode] = useState<'FOCUS_25' | 'FOCUS_15' | 'BREAK_5'>('FOCUS_25');
+  const [pomodoroSeconds, setPomodoroSeconds] = useState<number>(25 * 60);
+  const [pomodoroRunning, setPomodoroRunning] = useState<boolean>(false);
+  const [completedCycles, setCompletedCycles] = useState<number>(0);
+
+  useEffect(() => {
+    if (!pomodoroRunning) return;
+    const timer = setInterval(() => {
+      setPomodoroSeconds((prev) => {
+        if (prev <= 1) {
+          setPomodoroRunning(false);
+          if (pomodoroMode !== 'BREAK_5') {
+            setCompletedCycles((c) => c + 1);
+          }
+          Alert.alert(
+            pomodoroMode === 'BREAK_5' ? 'Pausa concluída!' : 'Ciclo de Foco Concluído!',
+            pomodoroMode === 'BREAK_5'
+              ? 'Hora de voltar ao seu bloco de estudos.'
+              : 'Excelente foco! Faça uma pausa rápida de 5 minutos e marque seu bloco como concluído.'
+          );
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [pomodoroRunning, pomodoroMode]);
+
+  const selectPomodoroPreset = (mode: 'FOCUS_25' | 'FOCUS_15' | 'BREAK_5') => {
+    setPomodoroRunning(false);
+    setPomodoroMode(mode);
+    setPomodoroSeconds(mode === 'FOCUS_25' ? 25 * 60 : mode === 'FOCUS_15' ? 15 * 60 : 5 * 60);
+  };
+
+  const formattedPomodoro = `${String(Math.floor(pomodoroSeconds / 60)).padStart(2, '0')}:${String(
+    pomodoroSeconds % 60
+  ).padStart(2, '0')}`;
+
   const loadPlan = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -199,6 +238,109 @@ export default function StudyPlanScreen() {
         </View>
       ) : (
         <ScrollView contentContainerStyle={styles.scrollContent}>
+          {/* MODO FOCO / POMODORO INTEGRADO */}
+          <View
+            style={[
+              styles.progressCard,
+              { backgroundColor: theme.surface, borderColor: theme.border },
+            ]}
+          >
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <FontAwesome5 name="stopwatch" size={15} color="#EA580C" />
+                <View>
+                  <Text style={[styles.progressTitle, { color: theme.text }]}>
+                    Modo Foco (Pomodoro)
+                  </Text>
+                  <Text style={{ fontSize: 11.5, color: theme.textMuted }}>
+                    Ciclos concluídos hoje: {completedCycles}
+                  </Text>
+                </View>
+              </View>
+              <Text style={{ fontSize: 24, fontWeight: '900', color: pomodoroRunning ? '#EA580C' : theme.text }}>
+                {formattedPomodoro}
+              </Text>
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+              {(
+                [
+                  { key: 'FOCUS_25', label: 'Foco 25m' },
+                  { key: 'FOCUS_15', label: 'Sprint 15m' },
+                  { key: 'BREAK_5', label: 'Pausa 5m' },
+                ] as const
+              ).map((preset) => {
+                const active = pomodoroMode === preset.key;
+                return (
+                  <TouchableOpacity
+                    key={preset.key}
+                    onPress={() => selectPomodoroPreset(preset.key)}
+                    style={{
+                      flex: 1,
+                      paddingVertical: 6,
+                      borderRadius: 10,
+                      borderWidth: 1,
+                      borderColor: active ? '#EA580C' : theme.border,
+                      backgroundColor: active ? '#FFF7ED' : theme.surfaceMuted,
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 11.5,
+                        fontWeight: '800',
+                        color: active ? '#C2410C' : theme.textMuted,
+                      }}
+                    >
+                      {preset.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+              <TouchableOpacity
+                onPress={() => {
+                  if (pomodoroSeconds === 0) {
+                    selectPomodoroPreset(pomodoroMode);
+                  }
+                  setPomodoroRunning((r) => !r);
+                }}
+                style={{
+                  flex: 1,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  paddingVertical: 9,
+                  borderRadius: 10,
+                  backgroundColor: pomodoroRunning ? '#D97706' : '#EA580C',
+                }}
+              >
+                <FontAwesome5 name={pomodoroRunning ? 'pause' : 'play'} size={11} color="#FFF" />
+                <Text style={{ color: '#FFF', fontSize: 12.5, fontWeight: '800' }}>
+                  {pomodoroRunning ? 'Pausar Foco' : 'Iniciar Foco'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => selectPomodoroPreset(pomodoroMode)}
+                style={{
+                  paddingHorizontal: 14,
+                  paddingVertical: 9,
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                  backgroundColor: theme.surfaceMuted,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <FontAwesome5 name="redo" size={12} color={theme.text} />
+              </TouchableOpacity>
+            </View>
+          </View>
+
           {/* CARD DE PROGRESSO SEMANAL */}
           <View
             style={[

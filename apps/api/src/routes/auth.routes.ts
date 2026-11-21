@@ -43,4 +43,9 @@ authRoutes.post("/refresh-token", authRateLimiter, (req, res) =>
 // Perfil do usuário autenticado atual
 authRoutes.get("/me", auth, (req, res) => authController.me(req, res));
 
+// Atualização da meta universitária / SISU do aluno
+authRoutes.patch("/goals", auth, (req, res) => authController.updateGoals(req, res));
+authRoutes.patch("/me/goals", auth, (req, res) => authController.updateGoals(req, res));
+authRoutes.post("/tri-history", auth, (req, res) => authController.appendTriHistory(req, res));
+
 export { authRoutes };

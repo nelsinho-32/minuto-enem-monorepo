@@ -460,6 +460,136 @@ export class PdfReportService {
       buffer,
     };
   }
+
+  /**
+   * Boletim Executivo Consolidado da Escola Inteira (PDF):
+   * compara todas as turmas, resultados de simulados institucionais e resumo de retenção/evasão.
+   */
+  async generateSchoolExecutiveReportPdf(schoolId: string): Promise<{
+    fileName: string;
+    buffer: Buffer;
+  }> {
+    const school = await prisma.school.findUnique({
+      where: { id: schoolId },
+      select: { id: true, name: true, code: true, slug: true },
+    });
+    if (!school) {
+      throw new AppError("Escola não encontrada.", 404);
+    }
+
+    const [classrooms, exams, totalUsers] = await Promise.all([
+      prisma.classroom.findMany({
+        where: { schoolId },
+        include: {
+          teacher: { select: { name: true } },
+          students: { select: { id: true, lastStudyDate: true, xp: true } },
+          _count: { select: { tasks: true } },
+        },
+        orderBy: { name: "asc" },
+      }),
+      prisma.institutionalExam.findMany({
+        where: { schoolId },
+        include: { attempts: { select: { triScore: true, accuracyPercent: true } } },
+        orderBy: { createdAt: "desc" },
+        take: 10,
+      }),
+      prisma.user.groupBy({
+        by: ["role"],
+        where: { schoolId, isActive: true },
+        _count: true,
+      }),
+    ]);
+
+    const teachersCount = totalUsers.find((g) => g.role === "TEACHER")?._count || 0;
+    const studentsCount = totalUsers.find((g) => g.role === "STUDENT")?._count || 0;
+    const sevenDaysAgo = Date.now() - 7 * 86_400_000;
+
+    const buffer = await new Promise<Buffer>((resolve, reject) => {
+      const doc = new PDFDocument({
+        size: "A4",
+        margin: 42,
+        info: {
+          Title: `Boletim Executivo - ${school.name}`,
+          Author: "Minuto ENEM",
+        },
+      });
+      const chunks: Buffer[] = [];
+      doc.on("data", (chunk: Buffer) => chunks.push(chunk));
+      doc.on("end", () => resolve(Buffer.concat(chunks)));
+      doc.on("error", reject);
+
+      doc.rect(0, 0, doc.page.width, 80).fill("#0F172A");
+      doc
+        .fillColor("#FFFFFF")
+        .font("Helvetica-Bold")
+        .fontSize(18)
+        .text("MINUTO ENEM — Boletim Executivo Escolar", 42, 22);
+      doc
+        .font("Helvetica")
+        .fontSize(10.5)
+        .text(
+          `${school.name} (Código: ${school.code})  •  Emitido em ${new Date().toLocaleDateString("pt-BR")}`,
+          42,
+          50
+        );
+
+      doc.fillColor("#0F172A").moveDown(3);
+      doc.font("Helvetica-Bold").fontSize(13).text("1. Resumo Geral da Instituição");
+      doc.moveDown(0.4);
+      doc.font("Helvetica").fontSize(10.5);
+      doc.text(`• Turmas ativas: ${classrooms.length}`);
+      doc.text(`• Professores ativos: ${teachersCount}`);
+      doc.text(`• Alunos ativos: ${studentsCount}`);
+      doc.text(`• Simulados institucionais registrados: ${exams.length}`);
+
+      doc.moveDown(1.2);
+      doc.font("Helvetica-Bold").fontSize(13).text("2. Comparativo por Turma & Retenção");
+      doc.moveDown(0.5);
+      doc.font("Helvetica").fontSize(10);
+
+      if (classrooms.length === 0) {
+        doc.text("Nenhuma turma cadastrada na instituição.");
+      } else {
+        for (const room of classrooms) {
+          const inactiveCount = room.students.filter(
+            (st) => !st.lastStudyDate || st.lastStudyDate.getTime() < sevenDaysAgo
+          ).length;
+          doc.text(
+            `• ${room.name} (${room.code}) — Prof. ${room.teacher?.name || "N/A"} | ${room.students.length} aluno(s) | ${room._count.tasks} tarefa(s) | ${inactiveCount} inativo(s) (>7d)`
+          );
+        }
+      }
+
+      doc.moveDown(1.2);
+      doc.font("Helvetica-Bold").fontSize(13).text("3. Simulados Institucionais Unificados");
+      doc.moveDown(0.5);
+      doc.font("Helvetica").fontSize(10);
+
+      if (exams.length === 0) {
+        doc.text("Nenhum simulado institucional aplicado até o momento.");
+      } else {
+        for (const ex of exams) {
+          const avgTri =
+            ex.attempts.length > 0
+              ? Math.round(
+                  ex.attempts.reduce((acc, a) => acc + a.triScore, 0) / ex.attempts.length
+                )
+              : null;
+          doc.text(
+            `• ${ex.title} — ${ex.attempts.length} participação(ões) | Média TRI: ${avgTri ?? "—"} pts`
+          );
+        }
+      }
+
+      doc.end();
+    });
+
+    const safeSlug = school.slug.toLowerCase().replace(/[^a-z0-9-_]/g, "-");
+    return {
+      fileName: `boletim-executivo-${safeSlug}.pdf`,
+      buffer,
+    };
+  }
 }
 
 export const pdfReportService = new PdfReportService();

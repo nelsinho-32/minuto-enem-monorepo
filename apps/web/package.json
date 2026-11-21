@@ -4,8 +4,10 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "predev": "node ../../scripts/sync-lan-ip.mjs",
     "dev": "expo start",
     "dev:tunnel": "expo start --tunnel",
+    "prestart": "node ../../scripts/sync-lan-ip.mjs",
     "start": "expo start",
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",

@@ -3,7 +3,8 @@ import { z } from "zod";
 // ============================================================================
 // ENUM PÚBLICO-ALVO (Target Audience)
 // ============================================================================
-export const AnnouncementAudienceEnum = z.enum(["ALL", "TEACHERS_ONLY"]);
+export const AnnouncementAudienceValues = ["ALL", "TEACHERS_ONLY", "CLASSROOM"] as const;
+export const AnnouncementAudienceEnum = z.enum(AnnouncementAudienceValues);
 export type AnnouncementAudience = z.infer<typeof AnnouncementAudienceEnum>;
 
 // ============================================================================
@@ -22,6 +23,8 @@ export const AnnouncementSchema = z.object({
     .trim()
     .min(5, "O conteúdo do comunicado deve ter no mínimo 5 caracteres."),
   targetAudience: AnnouncementAudienceEnum.default("ALL"),
+  classroomId: z.string().nullable().optional(),
+  scheduledFor: z.union([z.coerce.date(), z.string()]).nullable().optional(),
   authorId: z.string().nullable().optional(),
   createdAt: z.union([z.coerce.date(), z.string()]).optional(),
   updatedAt: z.union([z.coerce.date(), z.string()]).optional(),
@@ -51,6 +54,8 @@ export const CreateAnnouncementInputSchema = z.object({
     .trim()
     .min(5, "O conteúdo deve ter no mínimo 5 caracteres."),
   targetAudience: AnnouncementAudienceEnum.default("ALL").optional(),
+  classroomId: z.string().nullable().optional(),
+  scheduledFor: z.union([z.coerce.date(), z.string()]).nullable().optional(),
   schoolId: z.string().optional(),
 });
 
@@ -60,6 +65,8 @@ export const UpdateAnnouncementInputSchema = z.object({
   title: z.string().trim().min(3).max(150).optional(),
   content: z.string().trim().min(5).optional(),
   targetAudience: AnnouncementAudienceEnum.optional(),
+  classroomId: z.string().nullable().optional(),
+  scheduledFor: z.union([z.coerce.date(), z.string()]).nullable().optional(),
 });
 
 export type UpdateAnnouncementInput = z.infer<typeof UpdateAnnouncementInputSchema>;
@@ -73,6 +80,15 @@ export const AnnouncementResponseSchema = z.object({
   title: z.string(),
   content: z.string(),
   targetAudience: AnnouncementAudienceEnum,
+  classroomId: z.string().nullable().optional(),
+  scheduledFor: z.union([z.coerce.date(), z.string()]).nullable().optional(),
+  classroom: z
+    .object({
+      id: z.string(),
+      name: z.string(),
+    })
+    .nullable()
+    .optional(),
   authorId: z.string().nullable().optional(),
   createdAt: z.union([z.coerce.date(), z.string()]),
   updatedAt: z.union([z.coerce.date(), z.string()]).optional(),

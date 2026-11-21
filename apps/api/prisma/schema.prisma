@@ -24,6 +24,7 @@ enum MaterialType {
 enum AnnouncementAudience {
   ALL
   TEACHERS_ONLY
+  CLASSROOM
 }
 
 model School {
@@ -53,8 +54,14 @@ model User {
   email              String            @unique
   password           String
   role               Role              @default(STUDENT)
+  isActive           Boolean           @default(true)
   schoolId           String?
   school             School?           @relation(fields: [schoolId], references: [id], onDelete: SetNull)
+  targetCourse       String?
+  targetInstitution  String?
+  targetModality     String?           @default("AC")
+  targetScore        Int?
+  triHistory         Json?             @default("[]")
   xp                 Int               @default(0)
   currentStreak      Int               @default(0)
   longestStreak      Int               @default(0)
@@ -84,6 +91,8 @@ model User {
   taskTemplates             TaskTemplate[]             @relation("TeacherTaskTemplates")
   createdInstitutionalExams InstitutionalExam[]        @relation("CreatedInstitutionalExams")
   institutionalExamAttempts InstitutionalExamAttempt[] @relation("StudentExamAttempts")
+  questionFeedbacks         QuestionFeedback[]         @relation("TeacherQuestionFeedbacks")
+  essayRubricPresets        EssayRubricPreset[]        @relation("TeacherEssayRubrics")
   createdAt                 DateTime                   @default(now())
   updatedAt          DateTime          @default(now()) @updatedAt
 
@@ -102,13 +111,19 @@ model Announcement {
   title          String
   content        String               @db.Text
   targetAudience AnnouncementAudience @default(ALL)
-  authorId       String?
+  classroomId        String?
+  classroom          Classroom?           @relation(fields: [classroomId], references: [id], onDelete: SetNull)
+  scheduledFor       DateTime?
+  notificationSentAt DateTime?
+  authorId           String?
   author         User?                @relation(fields: [authorId], references: [id], onDelete: SetNull)
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @default(now()) @updatedAt
 
   @@index([schoolId])
   @@index([targetAudience])
+  @@index([classroomId])
+  @@index([scheduledFor])
   @@index([createdAt])
 }
 
@@ -121,9 +136,11 @@ model Classroom {
   teacherId String
   teacher   User     @relation("TeacherClassrooms", fields: [teacherId], references: [id], onDelete: Cascade)
   students  User[]   @relation("StudentClassrooms")
-  tasks     Task[]
-  lessons   Lesson[]
-  chatRoom  ChatRoom?
+  tasks             Task[]
+  lessons           Lesson[]
+  announcements     Announcement[]
+  questionFeedbacks QuestionFeedback[]
+  chatRoom          ChatRoom?
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
@@ -310,8 +327,9 @@ model Question {
   author            User?              @relation("AuthoredQuestions", fields: [authorId], references: [id], onDelete: SetNull)
   schoolId          String?
   attempts          QuestionAttempt[]
-  flashcardReviews FlashcardReview[]
+  flashcardReviews  FlashcardReview[]
   spacedRepetitions SpacedRepetition[]
+  questionFeedbacks QuestionFeedback[]
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @default(now()) @updatedAt
 
@@ -708,4 +726,69 @@ model InstitutionalExamAttempt {
   @@index([examId])
   @@index([studentId])
   @@index([classroomId])
+}
+
+model QuestionFeedback {
+  id          String    @id @default(uuid())
+  classroomId String
+  classroom   Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  questionId  String
+  question    Question  @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  teacherId   String
+  teacher     User      @relation("TeacherQuestionFeedbacks", fields: [teacherId], references: [id], onDelete: Cascade)
+  commentText String    @db.Text
+  audioUrl    String?   @db.Text
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([classroomId])
+  @@index([questionId])
+  @@index([teacherId])
+  @@index([createdAt])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  schoolId   String?
+  actorId    String?
+  actorName  String
+  action     String
+  targetType String
+  targetId   String?
+  details    Json?    @default("{}")
+  createdAt  DateTime @default(now())
+
+  @@index([schoolId])
+  @@index([actorId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+model EssayRubricPreset {
+  id         String   @id @default(uuid())
+  teacherId  String
+  teacher    User     @relation("TeacherEssayRubrics", fields: [teacherId], references: [id], onDelete: Cascade)
+  competency Int      @default(1) // 1 a 5 (ou 0 para geral)
+  title      String
+  content    String   @db.Text
+  createdAt  DateTime @default(now())
+
+  @@index([teacherId])
+  @@index([competency])
+}
+
+model SisuCutoffOverride {
+  id               String   @id @default(uuid())
+  institution      String
+  courseSlug       String
+  modality         String   @default("AC")
+  cutoffScore      Int
+  referenceEdition String   @default("SISU 2026")
+  updatedById      String?
+  updatedAt        DateTime @updatedAt
+  createdAt        DateTime @default(now())
+
+  @@unique([institution, courseSlug, modality])
+  @@index([institution])
+  @@index([courseSlug])
 }

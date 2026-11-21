@@ -13,11 +13,13 @@ export class QuestionController {
    */
   async list(req: Request, res: Response): Promise<Response> {
     try {
-      const { subject, area, topicId } = req.query;
+      const { subject, area, topicId, difficulty, limit } = req.query;
       const questions = await questionService.listQuestions(
         subject as string | undefined,
         area as string | undefined,
-        topicId as string | undefined
+        topicId as string | undefined,
+        difficulty as string | undefined,
+        limit ? Number(limit) : undefined
       );
 
       return res.status(200).json(questions);

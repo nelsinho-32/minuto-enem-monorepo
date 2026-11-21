@@ -10,12 +10,15 @@ import {
   TextInput,
   Alert,
   Platform,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/services/api';
+import * as WebBrowser from 'expo-web-browser';
+import { api, BASE_URL } from '@/services/api';
+import { useUserStore } from '@/store/useUserStore';
 import { RoleGuard } from '@/components/RoleGuard';
 import { KpiCard } from '@/components/b2b/KpiCard';
 import { Badge } from '@/components/b2b/Badge';
@@ -77,10 +80,106 @@ export default function SchoolDashboardScreen() {
   const styles = useThemedStyles(baseStyles);
   const router = useRouter();
   const queryClient = useQueryClient();
+  const token = useUserStore((s) => s.token);
+  const [isExportingExecPdf, setIsExportingExecPdf] = useState(false);
+
+  // Remanejamento em lote de alunos entre turmas
+  const [reassignModalVisible, setReassignModalVisible] = useState(false);
+  const [reassignFromId, setReassignFromId] = useState<string>('');
+  const [reassignToId, setReassignToId] = useState<string>('');
+  const [reassignStudents, setReassignStudents] = useState<Array<{ id: string; name: string; email: string }>>([]);
+  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
+  const [loadingReassignStudents, setLoadingReassignStudents] = useState(false);
+  const [isReassigning, setIsReassigning] = useState(false);
+
+  const handleExportExecutivePdf = async () => {
+    if (isExportingExecPdf) return;
+    setIsExportingExecPdf(true);
+    try {
+      const endpoint = `${BASE_URL}/schools/me/executive-report-pdf`;
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        const resp = await fetch(endpoint, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!resp.ok) throw new Error('Falha ao gerar PDF executivo.');
+        const blob = await resp.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `boletim-executivo-${school?.code || 'escola'}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+      } else {
+        await WebBrowser.openBrowserAsync(endpoint);
+      }
+    } catch (err: any) {
+      Alert.alert('Erro', err?.message || 'Não foi possível gerar o Boletim Executivo em PDF.');
+    } finally {
+      setIsExportingExecPdf(false);
+    }
+  };
+
+  const loadStudentsForReassign = async (fromId: string) => {
+    setReassignFromId(fromId);
+    setSelectedStudentIds([]);
+    if (!fromId) {
+      setReassignStudents([]);
+      return;
+    }
+    setLoadingReassignStudents(true);
+    try {
+      const list = await api.get<Array<{ id: string; name: string; email: string }>>(
+        `/schools/me/classrooms/${fromId}/students`
+      );
+      setReassignStudents(Array.isArray(list) ? list : []);
+    } catch {
+      setReassignStudents([]);
+    } finally {
+      setLoadingReassignStudents(false);
+    }
+  };
+
+  const handleConfirmReassignStudents = async () => {
+    if (!reassignFromId || !reassignToId || selectedStudentIds.length === 0) return;
+    setIsReassigning(true);
+    try {
+      const res = await api.post<{ movedCount: number; toClassroomName: string }>(
+        '/schools/me/classrooms/transfer-students',
+        {
+          fromClassroomId: reassignFromId,
+          toClassroomId: reassignToId,
+          studentIds: selectedStudentIds,
+        }
+      );
+      await queryClient.invalidateQueries({ queryKey: ['school-overview'] });
+      refetchOverview();
+      setReassignModalVisible(false);
+      Alert.alert(
+        'Remanejamento concluído!',
+        `${res.movedCount} aluno(s) movido(s) para ${res.toClassroomName}.`
+      );
+    } catch (err: any) {
+      Alert.alert('Erro', err?.message || 'Não foi possível remanejar os alunos.');
+    } finally {
+      setIsReassigning(false);
+    }
+  };
 
   const [activeTab, setActiveTab] = useState<TabType>('OVERVIEW');
   const [teacherModalVisible, setTeacherModalVisible] = useState(false);
   const [classroomModalVisible, setClassroomModalVisible] = useState(false);
+
+  // Transferência de titularidade de turma
+  const [transferClassroom, setTransferClassroom] = useState<{
+    id: string;
+    name: string;
+    teacherId: string;
+    teacherName: string;
+  } | null>(null);
+  const [selectedNewTeacherId, setSelectedNewTeacherId] = useState<string>('');
+  const [isTransferring, setIsTransferring] = useState(false);
 
   // 1. Visão consolidada da Escola
   const {
@@ -119,10 +218,34 @@ export default function SchoolDashboardScreen() {
   // Estado do formulário de criação de comunicado
   const [announcementTitle, setAnnouncementTitle] = useState('');
   const [announcementContent, setAnnouncementContent] = useState('');
-  const [announcementAudience, setAnnouncementAudience] = useState<'ALL' | 'TEACHERS_ONLY'>('ALL');
+  const [announcementAudience, setAnnouncementAudience] = useState<'ALL' | 'TEACHERS_ONLY' | 'CLASSROOM'>('ALL');
+  const [announcementClassroomId, setAnnouncementClassroomId] = useState<string>('');
+  const [announcementScheduleMode, setAnnouncementScheduleMode] = useState<'NOW' | 'TOMORROW' | 'CUSTOM'>('NOW');
+  const [announcementScheduleInput, setAnnouncementScheduleInput] = useState('');
   const [isSubmittingAnnouncement, setIsSubmittingAnnouncement] = useState(false);
   const [announcementFormError, setAnnouncementFormError] = useState<string | null>(null);
   const [announcementSuccessMsg, setAnnouncementSuccessMsg] = useState<string | null>(null);
+
+  const handleTransferClassroom = async () => {
+    if (!transferClassroom || !selectedNewTeacherId) return;
+    setIsTransferring(true);
+    try {
+      await api.patch(`/schools/me/classrooms/${transferClassroom.id}/transfer`, {
+        newTeacherId: selectedNewTeacherId,
+      });
+      await queryClient.invalidateQueries({ queryKey: ['school-overview'] });
+      await queryClient.invalidateQueries({ queryKey: ['school-teachers'] });
+      refetchOverview();
+      refetchTeachers();
+      setTransferClassroom(null);
+      setSelectedNewTeacherId('');
+      Alert.alert('Turma transferida!', 'O novo professor titular já tem acesso à turma.');
+    } catch (err: any) {
+      Alert.alert('Erro', err?.message || 'Não foi possível transferir a turma.');
+    } finally {
+      setIsTransferring(false);
+    }
+  };
 
   const handleCreateAnnouncement = async () => {
     if (!announcementTitle.trim()) {
@@ -132,6 +255,25 @@ export default function SchoolDashboardScreen() {
     if (!announcementContent.trim()) {
       setAnnouncementFormError('A mensagem do comunicado é obrigatória.');
       return;
+    }
+    if (announcementAudience === 'CLASSROOM' && !announcementClassroomId) {
+      setAnnouncementFormError('Selecione a turma específica para receber este comunicado.');
+      return;
+    }
+
+    let scheduledIso: string | undefined;
+    if (announcementScheduleMode === 'TOMORROW') {
+      const tomorrow = new Date(Date.now() + 86_400_000);
+      tomorrow.setHours(8, 0, 0, 0);
+      scheduledIso = tomorrow.toISOString();
+    } else if (announcementScheduleMode === 'CUSTOM' && announcementScheduleInput.trim()) {
+      const normalized = announcementScheduleInput.trim().replace(' ', 'T');
+      const parsed = new Date(normalized);
+      if (Number.isNaN(parsed.getTime())) {
+        setAnnouncementFormError('Use o formato AAAA-MM-DD HH:MM (ex: 2026-12-01 08:00).');
+        return;
+      }
+      scheduledIso = parsed.toISOString();
     }
 
     try {
@@ -143,12 +285,23 @@ export default function SchoolDashboardScreen() {
         title: announcementTitle.trim(),
         content: announcementContent.trim(),
         targetAudience: announcementAudience,
+        ...(announcementAudience === 'CLASSROOM' && announcementClassroomId
+          ? { classroomId: announcementClassroomId }
+          : {}),
+        ...(scheduledIso ? { scheduledFor: scheduledIso } : {}),
       });
 
       setAnnouncementTitle('');
       setAnnouncementContent('');
       setAnnouncementAudience('ALL');
-      setAnnouncementSuccessMsg('Comunicado publicado com sucesso no Mural da Escola!');
+      setAnnouncementClassroomId('');
+      setAnnouncementScheduleMode('NOW');
+      setAnnouncementScheduleInput('');
+      setAnnouncementSuccessMsg(
+        scheduledIso
+          ? 'Comunicado agendado com sucesso para a data escolhida!'
+          : 'Comunicado publicado com sucesso no Mural da Escola!'
+      );
       await queryClient.invalidateQueries({ queryKey: ['school-announcements'] });
       await queryClient.invalidateQueries({ queryKey: ['institutional-announcements'] });
       refetchAnnouncements();
@@ -252,6 +405,23 @@ export default function SchoolDashboardScreen() {
           </View>
 
           <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={[styles.actionBtnOutline, { borderColor: '#FECACA', backgroundColor: '#FEF2F2' }]}
+              onPress={handleExportExecutivePdf}
+              disabled={isExportingExecPdf}
+              activeOpacity={0.8}
+            >
+              <FontAwesome5
+                name="file-pdf"
+                size={12}
+                color="#DC2626"
+                style={{ marginRight: 6 }}
+              />
+              <Text style={[styles.actionBtnOutlineText, { color: '#DC2626' }]}>
+                {isExportingExecPdf ? 'Gerando...' : 'Boletim PDF'}
+              </Text>
+            </TouchableOpacity>
+
             <TouchableOpacity
               style={styles.actionBtnOutline}
               onPress={() => setActiveTab('ANNOUNCEMENTS')}
@@ -615,18 +785,37 @@ export default function SchoolDashboardScreen() {
                 <View style={styles.tabContent}>
                   <View style={styles.tabHeaderActionRow}>
                     <Text style={styles.tabHeadingText}>Turmas da Instituição</Text>
-                    <TouchableOpacity
-                      style={styles.actionBtnPrimary}
-                      onPress={() => setClassroomModalVisible(true)}
-                    >
-                      <FontAwesome5
-                        name="plus"
-                        size={12}
-                        color="#FFFFFF"
-                        style={{ marginRight: 6 }}
-                      />
-                      <Text style={styles.actionBtnPrimaryText}>Nova Turma</Text>
-                    </TouchableOpacity>
+                    <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                      {classrooms.length >= 2 && (
+                        <TouchableOpacity
+                          style={[styles.actionBtnOutline, { borderColor: '#0284C7' }]}
+                          onPress={() => {
+                            const firstId = classrooms[0]?.id || '';
+                            const secondId = classrooms[1]?.id || '';
+                            setReassignToId(secondId);
+                            setReassignModalVisible(true);
+                            loadStudentsForReassign(firstId);
+                          }}
+                        >
+                          <FontAwesome5 name="people-arrows" size={12} color="#0284C7" style={{ marginRight: 6 }} />
+                          <Text style={[styles.actionBtnOutlineText, { color: '#0284C7' }]}>
+                            Remanejar Alunos
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                      <TouchableOpacity
+                        style={styles.actionBtnPrimary}
+                        onPress={() => setClassroomModalVisible(true)}
+                      >
+                        <FontAwesome5
+                          name="plus"
+                          size={12}
+                          color="#FFFFFF"
+                          style={{ marginRight: 6 }}
+                        />
+                        <Text style={styles.actionBtnPrimaryText}>Nova Turma</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
 
                   <View style={styles.classroomsList}>
@@ -646,18 +835,44 @@ export default function SchoolDashboardScreen() {
                             </Text>
                           </View>
 
-                          <TouchableOpacity
-                            style={styles.viewAnalyticsBtn}
-                            onPress={() => router.push(`/teacher/classrooms/${c.id}` as any)}
-                          >
-                            <Text style={styles.viewAnalyticsBtnText}>Acessar Painel</Text>
-                            <FontAwesome5
-                              name="arrow-right"
-                              size={11}
-                              color="#1CB0F6"
-                              style={{ marginLeft: 6 }}
-                            />
-                          </TouchableOpacity>
+                          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                            <TouchableOpacity
+                              style={[styles.viewAnalyticsBtn, { borderColor: '#C4B5FD', backgroundColor: '#F5F3FF' }]}
+                              onPress={() => {
+                                setTransferClassroom({
+                                  id: c.id,
+                                  name: c.name,
+                                  teacherId: c.teacherId,
+                                  teacherName: c.teacherName,
+                                });
+                                const fallbackTeacher = teachers.find((t) => t.id !== c.teacherId);
+                                setSelectedNewTeacherId(fallbackTeacher?.id || '');
+                              }}
+                            >
+                              <FontAwesome5
+                                name="exchange-alt"
+                                size={11}
+                                color="#7C3AED"
+                                style={{ marginRight: 6 }}
+                              />
+                              <Text style={[styles.viewAnalyticsBtnText, { color: '#6D28D9' }]}>
+                                Transferir Prof.
+                              </Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                              style={styles.viewAnalyticsBtn}
+                              onPress={() => router.push(`/teacher/classrooms/${c.id}` as any)}
+                            >
+                              <Text style={styles.viewAnalyticsBtnText}>Acessar Painel</Text>
+                              <FontAwesome5
+                                name="arrow-right"
+                                size={11}
+                                color="#1CB0F6"
+                                style={{ marginLeft: 6 }}
+                              />
+                            </TouchableOpacity>
+                          </View>
                         </View>
                       </View>
                     ))}
@@ -867,7 +1082,117 @@ export default function SchoolDashboardScreen() {
                             <FontAwesome5 name="check" size={12} color="#2563EB" />
                           )}
                         </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={[
+                            styles.audienceOptionBtn,
+                            announcementAudience === 'CLASSROOM' && {
+                              borderColor: '#7C3AED',
+                              backgroundColor: '#F5F3FF',
+                            },
+                          ]}
+                          onPress={() => {
+                            setAnnouncementAudience('CLASSROOM');
+                            if (!announcementClassroomId && classrooms[0]?.id) {
+                              setAnnouncementClassroomId(classrooms[0].id);
+                            }
+                          }}
+                          activeOpacity={0.8}
+                        >
+                          <FontAwesome5
+                            name="graduation-cap"
+                            size={14}
+                            color={announcementAudience === 'CLASSROOM' ? '#7C3AED' : '#64748B'}
+                            style={{ marginRight: 8 }}
+                          />
+                          <View style={{ flex: 1 }}>
+                            <Text
+                              style={[
+                                styles.audienceOptionTitle,
+                                announcementAudience === 'CLASSROOM' && { color: '#6D28D9' },
+                              ]}
+                            >
+                              Turma Específica
+                            </Text>
+                            <Text style={styles.audienceOptionSub}>
+                              Segmentado por sala
+                            </Text>
+                          </View>
+                          {announcementAudience === 'CLASSROOM' && (
+                            <FontAwesome5 name="check" size={12} color="#7C3AED" />
+                          )}
+                        </TouchableOpacity>
                       </View>
+                    </View>
+
+                    {announcementAudience === 'CLASSROOM' && (
+                      <View style={styles.formGroup}>
+                        <Text style={styles.formLabel}>Selecionar Turma de Destino *</Text>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                          {classrooms.map((room) => {
+                            const selected = announcementClassroomId === room.id;
+                            return (
+                              <TouchableOpacity
+                                key={room.id}
+                                onPress={() => setAnnouncementClassroomId(room.id)}
+                                style={{
+                                  paddingHorizontal: 12,
+                                  paddingVertical: 8,
+                                  borderRadius: 10,
+                                  borderWidth: 1.5,
+                                  borderColor: selected ? '#7C3AED' : '#E2E8F0',
+                                  backgroundColor: selected ? '#EDE9FE' : '#F8FAFC',
+                                }}
+                              >
+                                <Text style={{ fontSize: 12.5, fontWeight: '700', color: selected ? '#6D28D9' : '#334155' }}>
+                                  {room.name} ({room.code})
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </ScrollView>
+                      </View>
+                    )}
+
+                    {/* Campo: Agendamento Opcional */}
+                    <View style={styles.formGroup}>
+                      <Text style={styles.formLabel}>Quando publicar?</Text>
+                      <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                        {[
+                          { key: 'NOW', label: 'Imediato' },
+                          { key: 'TOMORROW', label: 'Amanhã às 08h' },
+                          { key: 'CUSTOM', label: 'Data/Hora específica' },
+                        ].map((opt) => {
+                          const active = announcementScheduleMode === opt.key;
+                          return (
+                            <TouchableOpacity
+                              key={opt.key}
+                              onPress={() => setAnnouncementScheduleMode(opt.key as any)}
+                              style={{
+                                paddingHorizontal: 12,
+                                paddingVertical: 8,
+                                borderRadius: 10,
+                                borderWidth: 1,
+                                borderColor: active ? '#0284C7' : '#E2E8F0',
+                                backgroundColor: active ? '#E0F2FE' : '#FFFFFF',
+                              }}
+                            >
+                              <Text style={{ fontSize: 12, fontWeight: '800', color: active ? '#0369A1' : '#475569' }}>
+                                {opt.label}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                      {announcementScheduleMode === 'CUSTOM' && (
+                        <TextInput
+                          style={[styles.formInput, { marginTop: 8 }]}
+                          placeholder="AAAA-MM-DD HH:MM (Ex: 2026-12-01 08:30)"
+                          placeholderTextColor="#94A3B8"
+                          value={announcementScheduleInput}
+                          onChangeText={setAnnouncementScheduleInput}
+                        />
+                      )}
                     </View>
 
                     {/* Botão de Envio */}
@@ -923,7 +1248,10 @@ export default function SchoolDashboardScreen() {
                       <View style={styles.announcementsList}>
                         {announcements.map((item) => {
                           const isTeachers = item.targetAudience === 'TEACHERS_ONLY';
-                          const formattedDate = new Date(item.createdAt).toLocaleDateString('pt-BR', {
+                          const isClassroom = item.targetAudience === 'CLASSROOM';
+                          const isFutureScheduled =
+                            item.scheduledFor && new Date(item.scheduledFor).getTime() > Date.now();
+                          const formattedDate = new Date(item.scheduledFor || item.createdAt).toLocaleDateString('pt-BR', {
                             day: '2-digit',
                             month: 'short',
                             year: 'numeric',
@@ -936,33 +1264,51 @@ export default function SchoolDashboardScreen() {
                               key={item.id}
                               style={[
                                 styles.publishedItemCard,
-                                isTeachers ? styles.itemBorderBlue : styles.itemBorderGreen,
+                                isTeachers
+                                  ? styles.itemBorderBlue
+                                  : isClassroom
+                                    ? { borderLeftColor: '#7C3AED', borderLeftWidth: 4 }
+                                    : styles.itemBorderGreen,
                               ]}
                             >
                               <View style={styles.publishedItemTop}>
                                 <View
                                   style={[
                                     styles.audienceBadgeSmall,
-                                    isTeachers ? styles.badgeBlue : styles.badgeGreen,
+                                    isTeachers
+                                      ? styles.badgeBlue
+                                      : isClassroom
+                                        ? { backgroundColor: '#EDE9FE' }
+                                        : styles.badgeGreen,
                                   ]}
                                 >
                                   <FontAwesome5
-                                    name={isTeachers ? 'chalkboard-teacher' : 'users'}
+                                    name={isTeachers ? 'chalkboard-teacher' : isClassroom ? 'graduation-cap' : 'users'}
                                     size={10}
-                                    color={isTeachers ? '#2563EB' : '#16A34A'}
+                                    color={isTeachers ? '#2563EB' : isClassroom ? '#6D28D9' : '#16A34A'}
                                     style={{ marginRight: 4 }}
                                   />
                                   <Text
                                     style={[
                                       styles.audienceBadgeSmallText,
-                                      isTeachers ? styles.textBlue : styles.textGreen,
+                                      isTeachers
+                                        ? styles.textBlue
+                                        : isClassroom
+                                          ? { color: '#6D28D9' }
+                                          : styles.textGreen,
                                     ]}
                                   >
-                                    {isTeachers ? 'Apenas Professores' : 'Geral (Todos)'}
+                                    {isTeachers
+                                      ? 'Apenas Professores'
+                                      : isClassroom
+                                        ? `Turma: ${item.classroom?.name || 'Específica'}`
+                                        : 'Geral (Todos)'}
                                   </Text>
                                 </View>
 
-                                <Text style={styles.publishedItemDate}>{formattedDate}</Text>
+                                <Text style={styles.publishedItemDate}>
+                                  {isFutureScheduled ? `Agendado p/ ${formattedDate}` : formattedDate}
+                                </Text>
                               </View>
 
                               <Text style={styles.publishedItemTitle}>{item.title}</Text>
@@ -1018,6 +1364,260 @@ export default function SchoolDashboardScreen() {
           }}
           onOpenCreateTeacher={() => setTeacherModalVisible(true)}
         />
+
+        {/* Modal: Transferir Turma para outro Professor */}
+        <Modal
+          visible={Boolean(transferClassroom)}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setTransferClassroom(null)}
+        >
+          <View
+            style={{
+              flex: 1,
+              backgroundColor: 'rgba(15,23,42,0.55)',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 20,
+            }}
+          >
+            <View
+              style={{
+                width: '100%',
+                maxWidth: 420,
+                backgroundColor: '#FFFFFF',
+                borderRadius: 18,
+                padding: 20,
+                gap: 12,
+              }}
+            >
+              <Text style={{ fontSize: 17, fontWeight: '800', color: '#0F172A' }}>
+                Transferir Titularidade da Turma
+              </Text>
+              <Text style={{ fontSize: 13, color: '#475569' }}>
+                Turma: <Text style={{ fontWeight: '800' }}>{transferClassroom?.name}</Text> (atual: Prof.{' '}
+                {transferClassroom?.teacherName})
+              </Text>
+
+              <ScrollView style={{ maxHeight: 220 }} contentContainerStyle={{ gap: 8 }}>
+                {teachers
+                  .filter((t) => t.id !== transferClassroom?.teacherId)
+                  .map((t) => {
+                    const active = selectedNewTeacherId === t.id;
+                    return (
+                      <TouchableOpacity
+                        key={t.id}
+                        onPress={() => setSelectedNewTeacherId(t.id)}
+                        style={{
+                          padding: 12,
+                          borderRadius: 12,
+                          borderWidth: 1.5,
+                          borderColor: active ? '#7C3AED' : '#E2E8F0',
+                          backgroundColor: active ? '#F5F3FF' : '#F8FAFC',
+                        }}
+                      >
+                        <Text style={{ fontSize: 14, fontWeight: '800', color: '#0F172A' }}>
+                          {t.name}
+                        </Text>
+                        <Text style={{ fontSize: 12, color: '#64748B' }}>{t.email}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                {teachers.filter((t) => t.id !== transferClassroom?.teacherId).length === 0 && (
+                  <Text style={{ fontSize: 12.5, color: '#64748B', paddingVertical: 12 }}>
+                    Cadastre outro professor primeiro na aba Professores para realizar a transferência.
+                  </Text>
+                )}
+              </ScrollView>
+
+              <View style={{ flexDirection: 'row', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
+                <TouchableOpacity
+                  onPress={() => setTransferClassroom(null)}
+                  style={{ paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, backgroundColor: '#F1F5F9' }}
+                >
+                  <Text style={{ fontWeight: '700', color: '#475569' }}>Cancelar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  disabled={!selectedNewTeacherId || isTransferring}
+                  onPress={handleTransferClassroom}
+                  style={{
+                    paddingHorizontal: 16,
+                    paddingVertical: 10,
+                    borderRadius: 10,
+                    backgroundColor: selectedNewTeacherId ? '#7C3AED' : '#CBD5E1',
+                  }}
+                >
+                  <Text style={{ fontWeight: '800', color: '#FFFFFF' }}>
+                    {isTransferring ? 'Transferindo...' : 'Confirmar Transferência'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Modal: Remanejamento em Lote de Alunos entre Turmas */}
+        <Modal
+          visible={reassignModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setReassignModalVisible(false)}
+        >
+          <View
+            style={{
+              flex: 1,
+              backgroundColor: 'rgba(15,23,42,0.55)',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 20,
+            }}
+          >
+            <View
+              style={{
+                width: '100%',
+                maxWidth: 460,
+                backgroundColor: '#FFFFFF',
+                borderRadius: 18,
+                padding: 20,
+                gap: 10,
+              }}
+            >
+              <Text style={{ fontSize: 17, fontWeight: '800', color: '#0F172A' }}>
+                Remanejamento em Lote de Alunos
+              </Text>
+              <Text style={{ fontSize: 12.5, color: '#475569' }}>
+                Selecione a turma de origem, marque os alunos e escolha a turma de destino:
+              </Text>
+
+              <Text style={{ fontSize: 12, fontWeight: '800', color: '#334155' }}>Turma de Origem:</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+                {classrooms.map((c) => {
+                  const active = reassignFromId === c.id;
+                  return (
+                    <TouchableOpacity
+                      key={c.id}
+                      onPress={() => loadStudentsForReassign(c.id)}
+                      style={{
+                        paddingHorizontal: 10,
+                        paddingVertical: 7,
+                        borderRadius: 10,
+                        borderWidth: 1.5,
+                        borderColor: active ? '#0284C7' : '#E2E8F0',
+                        backgroundColor: active ? '#E0F2FE' : '#F8FAFC',
+                      }}
+                    >
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: active ? '#0369A1' : '#334155' }}>
+                        {c.name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+
+              <Text style={{ fontSize: 12, fontWeight: '800', color: '#334155' }}>Turma de Destino:</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+                {classrooms
+                  .filter((c) => c.id !== reassignFromId)
+                  .map((c) => {
+                    const active = reassignToId === c.id;
+                    return (
+                      <TouchableOpacity
+                        key={c.id}
+                        onPress={() => setReassignToId(c.id)}
+                        style={{
+                          paddingHorizontal: 10,
+                          paddingVertical: 7,
+                          borderRadius: 10,
+                          borderWidth: 1.5,
+                          borderColor: active ? '#16A34A' : '#E2E8F0',
+                          backgroundColor: active ? '#DCFCE7' : '#F8FAFC',
+                        }}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: active ? '#15803D' : '#334155' }}>
+                          {c.name}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+              </ScrollView>
+
+              <Text style={{ fontSize: 12, fontWeight: '800', color: '#334155' }}>
+                Alunos ({selectedStudentIds.length} selecionado(s)):
+              </Text>
+              {loadingReassignStudents ? (
+                <ActivityIndicator size="small" color="#0284C7" style={{ marginVertical: 14 }} />
+              ) : (
+                <ScrollView style={{ maxHeight: 190 }} contentContainerStyle={{ gap: 6 }}>
+                  {reassignStudents.length === 0 ? (
+                    <Text style={{ fontSize: 12, color: '#64748B', paddingVertical: 8 }}>
+                      Nenhum aluno matriculado nesta turma de origem.
+                    </Text>
+                  ) : (
+                    reassignStudents.map((st) => {
+                      const checked = selectedStudentIds.includes(st.id);
+                      return (
+                        <TouchableOpacity
+                          key={st.id}
+                          onPress={() =>
+                            setSelectedStudentIds((prev) =>
+                              checked ? prev.filter((id) => id !== st.id) : [...prev, st.id]
+                            )
+                          }
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: 10,
+                            borderRadius: 10,
+                            borderWidth: 1,
+                            borderColor: checked ? '#0284C7' : '#E2E8F0',
+                            backgroundColor: checked ? '#F0F9FF' : '#F8FAFC',
+                          }}
+                        >
+                          <View>
+                            <Text style={{ fontSize: 13, fontWeight: '800', color: '#0F172A' }}>{st.name}</Text>
+                            <Text style={{ fontSize: 11.5, color: '#64748B' }}>{st.email}</Text>
+                          </View>
+                          <FontAwesome5
+                            name={checked ? 'check-square' : 'square'}
+                            size={16}
+                            color={checked ? '#0284C7' : '#94A3B8'}
+                          />
+                        </TouchableOpacity>
+                      );
+                    })
+                  )}
+                </ScrollView>
+              )}
+
+              <View style={{ flexDirection: 'row', gap: 10, justifyContent: 'flex-end', marginTop: 6 }}>
+                <TouchableOpacity
+                  onPress={() => setReassignModalVisible(false)}
+                  style={{ paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, backgroundColor: '#F1F5F9' }}
+                >
+                  <Text style={{ fontWeight: '700', color: '#475569' }}>Cancelar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  disabled={!reassignFromId || !reassignToId || selectedStudentIds.length === 0 || isReassigning}
+                  onPress={handleConfirmReassignStudents}
+                  style={{
+                    paddingHorizontal: 16,
+                    paddingVertical: 10,
+                    borderRadius: 10,
+                    backgroundColor:
+                      reassignFromId && reassignToId && selectedStudentIds.length > 0
+                        ? '#0284C7'
+                        : '#CBD5E1',
+                  }}
+                >
+                  <Text style={{ fontWeight: '800', color: '#FFFFFF' }}>
+                    {isReassigning ? 'Movendo...' : `Mover (${selectedStudentIds.length})`}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </SafeAreaView>
     </RoleGuard>
   );

@@ -220,20 +220,27 @@ function applyQuestionFilters(
     }
   }
 
-  // Filtro por matéria
+  // Filtro por matéria (normalizando acentos para evitar divergência Matemática vs Matematica)
+  const norm = (v?: string | null) =>
+    String(v || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
+
   if (subjectId) {
     const subjectMatches = data.filter((q) => q.subjectId === subjectId);
     if (subjectMatches.length > 0) {
       data = subjectMatches;
     }
   } else if (subject) {
-    const term = subject.toLowerCase();
-    data = data.filter((q) => q.subject?.toLowerCase().includes(term));
+    const term = norm(subject);
+    data = data.filter((q) => norm(q.subject).includes(term));
   }
 
   if (area) {
-    const term = area.toLowerCase();
-    data = data.filter((q) => q.area?.toLowerCase().includes(term));
+    const term = norm(area);
+    data = data.filter((q) => norm(q.area).includes(term));
   }
 
   if (day === '1') {

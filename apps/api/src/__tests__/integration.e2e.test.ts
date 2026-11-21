@@ -6,6 +6,7 @@ import { app } from "../server";
 import { prisma } from "../lib/prisma";
 import { authService } from "../services/auth.service";
 import { realtimeNotificationService } from "../services/realtime-notification.service";
+import { announcementService } from "../services/announcement.service";
 
 const RUN_SUFFIX = `e2e_${Date.now()}`;
 let dbAvailable = false;
@@ -132,12 +133,22 @@ describe("Integração E2E com PostgreSQL — Rotas Críticas do Minuto ENEM", (
       await prisma.task.deleteMany({ where: { classroomId } });
       await prisma.classroom.deleteMany({ where: { id: classroomId } });
     }
+    if (schoolId) {
+      await prisma.auditLog.deleteMany({ where: { schoolId } });
+      await prisma.announcement.deleteMany({ where: { schoolId } });
+      await prisma.classroom.deleteMany({ where: { schoolId } });
+    }
+    await prisma.sisuCutoffOverride.deleteMany({
+      where: { institution: "USP", courseSlug: "medicina", modality: "L1" },
+    });
     await prisma.user.deleteMany({
       where: {
         email: {
           in: [
             `dir_${RUN_SUFFIX}@escola.test`,
             `prof_${RUN_SUFFIX}@escola.test`,
+            `prof2_${RUN_SUFFIX}@escola.test`,
+            `admin_${RUN_SUFFIX}@escola.test`,
             `aluno_${RUN_SUFFIX}@escola.test`,
             importedEmail,
           ],
@@ -344,5 +355,294 @@ describe("Integração E2E com PostgreSQL — Rotas Críticas do Minuto ENEM", (
       .send({ studentIds: [studentUserId] });
     expect(nudgeRes.status).toBe(200);
     expect(nudgeRes.body.notifiedCount).toBe(1);
+  });
+
+  it("Agenda unificada, Devolutiva por questão, Permissões/Transferência, Comunicados agendados e Catálogo SISU", async () => {
+    if (!dbAvailable) return;
+
+    // 1. Agenda / Calendário Unificado de Entregas
+    const tomorrow = new Date(Date.now() + 86_400_000).toISOString();
+    const createdTaskRes = await request(app)
+      .post(`/api/classrooms/${classroomId}/tasks`)
+      .set("Authorization", `Bearer ${teacherToken}`)
+      .send({
+        title: "Lista Agenda E2E",
+        topic: "Funções",
+        total: 1,
+        dueDate: tomorrow,
+        questionIds: [customQuestionId],
+      });
+    expect(createdTaskRes.status).toBe(201);
+
+    const calStudentRes = await request(app)
+      .get("/api/tasks/calendar")
+      .set("Authorization", `Bearer ${studentToken}`);
+    expect(calStudentRes.status).toBe(200);
+    expect(calStudentRes.body.items.some((t: any) => t.title === "Lista Agenda E2E")).toBe(true);
+
+    // 2. Devolutiva comentada e em áudio por questão errada
+    const fbCreateRes = await request(app)
+      .post(`/api/classrooms/${classroomId}/question-feedback`)
+      .set("Authorization", `Bearer ${teacherToken}`)
+      .send({
+        questionId: customQuestionId,
+        commentText: "Atenção ao enunciado desta questão de Matemática!",
+        audioUrl: "data:audio/webm;base64,GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibQ==",
+      });
+    expect(fbCreateRes.status).toBe(201);
+
+    const fbListRes = await request(app)
+      .get(`/api/classrooms/${classroomId}/question-feedback`)
+      .set("Authorization", `Bearer ${studentToken}`);
+    expect(fbListRes.status).toBe(200);
+    expect(fbListRes.body.feedbacks.length).toBeGreaterThanOrEqual(1);
+    expect(fbListRes.body.feedbacks[0].commentText).toContain("Atenção ao enunciado");
+
+    // 3. Agendamento e Segmentação de Comunicados por Turma
+    const immediateClassroomAnn = await request(app)
+      .post("/api/schools/me/announcements")
+      .set("Authorization", `Bearer ${schoolToken}`)
+      .send({
+        title: "Aviso Turma Específica E2E",
+        content: "Recado somente para esta turma.",
+        targetAudience: "CLASSROOM",
+        classroomId,
+      });
+    expect(immediateClassroomAnn.status).toBe(201);
+
+    const futureDate = new Date(Date.now() + 7 * 86_400_000).toISOString();
+    const scheduledAnn = await request(app)
+      .post("/api/schools/me/announcements")
+      .set("Authorization", `Bearer ${schoolToken}`)
+      .send({
+        title: "Comunicado Futuro Agendado",
+        content: "Só deve aparecer na semana que vem.",
+        targetAudience: "ALL",
+        scheduledFor: futureDate,
+      });
+    expect(scheduledAnn.status).toBe(201);
+
+    const studentAnnList = await request(app)
+      .get("/api/announcements")
+      .set("Authorization", `Bearer ${studentToken}`);
+    expect(studentAnnList.status).toBe(200);
+    const titles = (studentAnnList.body || []).map((a: any) => a.title);
+    expect(titles).toContain("Aviso Turma Específica E2E");
+    expect(titles).not.toContain("Comunicado Futuro Agendado");
+
+    // 4. Gestão de Permissões (desativar e reativar usuário) + Transferência de Turma
+    const usersRes = await request(app)
+      .get("/api/schools/me/users")
+      .set("Authorization", `Bearer ${schoolToken}`);
+    expect(usersRes.status).toBe(200);
+    expect(usersRes.body.some((u: any) => u.id === studentUserId)).toBe(true);
+
+    const disableRes = await request(app)
+      .patch(`/api/schools/me/users/${studentUserId}/status`)
+      .set("Authorization", `Bearer ${schoolToken}`)
+      .send({ isActive: false });
+    expect(disableRes.status).toBe(200);
+    expect(disableRes.body.isActive).toBe(false);
+
+    const blockedLogin = await request(app)
+      .post("/api/auth/login")
+      .send({
+        email: `aluno_${RUN_SUFFIX}@escola.test`,
+        password: "SenhaForte123!",
+      });
+    expect(blockedLogin.status).toBe(403);
+
+    await request(app)
+      .patch(`/api/schools/me/users/${studentUserId}/status`)
+      .set("Authorization", `Bearer ${schoolToken}`)
+      .send({ isActive: true });
+
+    const passwordHash2 = await bcrypt.hash("SenhaForte123!", 8);
+    const secondTeacher = await prisma.user.create({
+      data: {
+        name: "Professor Substituto E2E",
+        email: `prof2_${RUN_SUFFIX}@escola.test`,
+        password: passwordHash2,
+        role: Role.TEACHER,
+        schoolId,
+      },
+    });
+    const transferRes = await request(app)
+      .patch(`/api/schools/me/classrooms/${classroomId}/transfer`)
+      .set("Authorization", `Bearer ${schoolToken}`)
+      .send({ newTeacherId: secondTeacher.id });
+    expect(transferRes.status).toBe(200);
+    expect(transferRes.body.teacherId).toBe(secondTeacher.id);
+
+    // 5. Catálogo Relacional SISU & Metas do Aluno
+    const sisuRes = await request(app).get("/api/sisu/courses?q=Medicina&institution=USP");
+    expect(sisuRes.status).toBe(200);
+    expect(sisuRes.body.items.length).toBeGreaterThanOrEqual(1);
+    expect(sisuRes.body.items[0].institution).toBe("USP");
+
+    const goalsRes = await request(app)
+      .patch("/api/auth/goals")
+      .set("Authorization", `Bearer ${studentToken}`)
+      .send({
+        targetCourse: "Medicina",
+        targetInstitution: "USP",
+        targetModality: "L1",
+        targetScore: 798,
+      });
+    expect(goalsRes.status).toBe(200);
+    expect(goalsRes.body.targetInstitution).toBe("USP");
+    expect(goalsRes.body.targetModality).toBe("L1");
+    expect(goalsRes.body.targetScore).toBe(798);
+  });
+
+  it("Recursos avançados por role: Storage de áudio, Caderno de Erros, Rubricas, Remanejamento, Auditoria, PDF Executivo, Worker e Admin", async () => {
+    if (!dbAvailable) return;
+
+    // 1. Áudio em Storage (não base64) + Caderno de Erros com devolutiva
+    const storedFeedbacks = await prisma.questionFeedback.findMany({
+      where: { classroomId },
+    });
+    expect(storedFeedbacks.some((f) => f.audioUrl?.startsWith("/uploads/feedback-audio/"))).toBe(true);
+
+    await prisma.questionAttempt.create({
+      data: {
+        userId: studentUserId,
+        questionId: customQuestionId,
+        selectedAnswer: 0,
+        isCorrect: false,
+      },
+    });
+    const notebookRes = await request(app)
+      .get("/api/questions/error-notebook")
+      .set("Authorization", `Bearer ${studentToken}`);
+    expect(notebookRes.status).toBe(200);
+    expect(notebookRes.body.items[0]?.teacherFeedbacks?.length).toBeGreaterThanOrEqual(1);
+
+    // 2. Curva Histórica TRI + Cotas SISU
+    const triRes = await request(app)
+      .post("/api/auth/tri-history")
+      .set("Authorization", `Bearer ${studentToken}`)
+      .send({ score: 745, label: "Simulado Express E2E", accuracyPercent: 80 });
+    expect(triRes.status).toBe(201);
+    expect(triRes.body.triHistory.length).toBeGreaterThanOrEqual(1);
+
+    const sisuQuotaRes = await request(app).get("/api/sisu/courses?q=Medicina&institution=USP&modality=L1");
+    expect(sisuQuotaRes.status).toBe(200);
+    expect(sisuQuotaRes.body.items[0].modalityCode).toBe("L1");
+
+    // 3. Rubricas de Redação + Lembrete de Pendências na Agenda
+    const rubricRes = await request(app)
+      .post("/api/essays/rubrics")
+      .set("Authorization", `Bearer ${teacherToken}`)
+      .send({ competency: 5, title: "Detalhar agente", content: "[C5] Detalhe o agente social." });
+    expect(rubricRes.status).toBe(201);
+
+    const rubricListRes = await request(app)
+      .get("/api/essays/rubrics")
+      .set("Authorization", `Bearer ${teacherToken}`);
+    expect(rubricListRes.status).toBe(200);
+    expect(rubricListRes.body.length).toBeGreaterThanOrEqual(1);
+
+    const taskForRemind = await prisma.task.findFirst({ where: { classroomId } });
+    expect(taskForRemind).toBeTruthy();
+    const remindRes = await request(app)
+      .post(`/api/tasks/${taskForRemind!.id}/remind-pending`)
+      .set("Authorization", `Bearer ${schoolToken}`);
+    expect(remindRes.status).toBe(200);
+    expect(remindRes.body.notifiedCount).toBeGreaterThanOrEqual(1);
+
+    // 4. Worker de Comunicados Agendados
+    const dueScheduled = await prisma.announcement.create({
+      data: {
+        schoolId,
+        title: "Comunicado Agendado Vencido E2E",
+        content: "Deve ser disparado pelo worker.",
+        targetAudience: "ALL",
+        scheduledFor: new Date(Date.now() - 5_000),
+        notificationSentAt: null,
+      },
+    });
+    const workerResult = await announcementService.dispatchDueScheduledAnnouncements();
+    expect(workerResult.dispatched).toBeGreaterThanOrEqual(1);
+    const updatedAnn = await prisma.announcement.findUnique({ where: { id: dueScheduled.id } });
+    expect(updatedAnn?.notificationSentAt).not.toBeNull();
+
+    // 5. Escola: Remanejamento em lote de alunos, Log de Auditoria e Boletim Executivo PDF
+    const secondRoom = await prisma.classroom.create({
+      data: {
+        name: "Turma Destino E2E",
+        code: `DEST-${RUN_SUFFIX}`.slice(0, 18).toUpperCase(),
+        schoolId,
+        teacherId: teacherUserId,
+      },
+    });
+
+    const reassignRes = await request(app)
+      .post("/api/schools/me/classrooms/transfer-students")
+      .set("Authorization", `Bearer ${schoolToken}`)
+      .send({
+        fromClassroomId: classroomId,
+        toClassroomId: secondRoom.id,
+        studentIds: [studentUserId],
+      });
+    expect(reassignRes.status).toBe(200);
+    expect(reassignRes.body.movedCount).toBe(1);
+
+    const auditRes = await request(app)
+      .get("/api/schools/me/audit-logs")
+      .set("Authorization", `Bearer ${schoolToken}`);
+    expect(auditRes.status).toBe(200);
+    expect(auditRes.body.some((l: any) => l.action === "STUDENTS_BATCH_REASSIGNED")).toBe(true);
+
+    const execPdfRes = await request(app)
+      .get("/api/schools/me/executive-report-pdf")
+      .set("Authorization", `Bearer ${schoolToken}`);
+    expect(execPdfRes.status).toBe(200);
+    expect(execPdfRes.headers["content-type"]).toContain("application/pdf");
+
+    // 6. Admin: Saúde das Questões, Recalibração, Override Dinâmico SISU e Monitoramento de Tenants
+    const adminPass = await bcrypt.hash("SenhaForte123!", 8);
+    const adminUser = await prisma.user.create({
+      data: {
+        name: "Admin E2E",
+        email: `admin_${RUN_SUFFIX}@escola.test`,
+        password: adminPass,
+        role: Role.ADMIN,
+      },
+    });
+    const adminToken = authService.generateTokens(adminUser.id, adminUser.email, Role.ADMIN, null).accessToken;
+
+    const healthRes = await request(app)
+      .get("/api/admin/questions/health")
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(healthRes.status).toBe(200);
+    expect(typeof healthRes.body.totalQuestions).toBe("number");
+
+    const recalRes = await request(app)
+      .post("/api/admin/questions/recalibrate")
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(recalRes.status).toBe(200);
+
+    const overrideRes = await request(app)
+      .put("/api/admin/sisu/overrides")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        institution: "USP",
+        courseSlug: "medicina",
+        modality: "L1",
+        cutoffScore: 791,
+        referenceEdition: "SISU 2026 Teste",
+      });
+    expect(overrideRes.status).toBe(200);
+
+    const sisuAfterOverride = await request(app).get("/api/sisu/courses?q=Medicina&institution=USP&modality=L1");
+    expect(sisuAfterOverride.status).toBe(200);
+    expect(sisuAfterOverride.body.items[0].cutoffScore).toBe(791);
+
+    const tenantsRes = await request(app)
+      .get("/api/admin/tenants/overview")
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(tenantsRes.status).toBe(200);
+    expect(tenantsRes.body.summary.schoolsTotal).toBeGreaterThanOrEqual(1);
   });
 });

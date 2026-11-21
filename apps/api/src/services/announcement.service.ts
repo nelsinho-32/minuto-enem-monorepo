@@ -1,10 +1,10 @@
 import { Role, AnnouncementAudience } from "@prisma/client";
 import {
   CreateAnnouncementInputSchema,
-  type CreateAnnouncementInput,
 } from "@minuto-enem/shared";
 import { prisma } from "../lib/prisma";
 import { AppError } from "../errors/AppError";
+import { realtimeNotificationService } from "./realtime-notification.service";
 
 export class AnnouncementService {
   /**
@@ -35,7 +35,34 @@ export class AnnouncementService {
       throw new AppError("Esta instituição escolar está inativa no sistema.", 403);
     }
 
-    const audience = (input.targetAudience as AnnouncementAudience) || AnnouncementAudience.ALL;
+    let audience = (input.targetAudience as AnnouncementAudience) || AnnouncementAudience.ALL;
+    let validClassroomId: string | null = null;
+
+    if (input.classroomId) {
+      const targetClassroom = await prisma.classroom.findFirst({
+        where: {
+          id: input.classroomId,
+          schoolId: school.id,
+        },
+        select: { id: true },
+      });
+      if (!targetClassroom) {
+        throw new AppError("Turma de destino não encontrada nesta instituição.", 404);
+      }
+      validClassroomId = targetClassroom.id;
+      audience = AnnouncementAudience.CLASSROOM;
+    } else if (audience === AnnouncementAudience.CLASSROOM) {
+      throw new AppError("Selecione uma turma específica para comunicados segmentados.", 400);
+    }
+
+    let parsedScheduledFor: Date | null = null;
+    if (input.scheduledFor) {
+      const candidate = new Date(input.scheduledFor);
+      if (Number.isNaN(candidate.getTime())) {
+        throw new AppError("Data/horário de agendamento inválido.", 400);
+      }
+      parsedScheduledFor = candidate;
+    }
 
     let validAuthorId: string | null = null;
     if (authorId) {
@@ -48,6 +75,8 @@ export class AnnouncementService {
       }
     }
 
+    const isImmediate = !parsedScheduledFor || parsedScheduledFor.getTime() <= Date.now() + 60_000;
+
     const announcement = await prisma.announcement.create({
       data: {
         schoolId: school.id,
@@ -55,15 +84,114 @@ export class AnnouncementService {
         title: input.title,
         content: input.content,
         targetAudience: audience,
+        classroomId: validClassroomId,
+        scheduledFor: parsedScheduledFor,
+        notificationSentAt: isImmediate ? new Date() : null,
       },
       include: {
         school: {
           select: { id: true, name: true, code: true, slug: true },
         },
+        classroom: {
+          select: { id: true, name: true },
+        },
       },
     });
 
+    if (isImmediate) {
+      await this.notifyAnnouncementRecipients(announcement);
+    }
+
     return announcement;
+  }
+
+  /**
+   * Envia notificação persistida + tempo real para o público-alvo do comunicado.
+   */
+  private async notifyAnnouncementRecipients(announcement: {
+    id: string;
+    schoolId: string;
+    title: string;
+    content: string;
+    targetAudience: AnnouncementAudience;
+    classroomId: string | null;
+  }) {
+    try {
+      let recipientIds: string[] = [];
+      if (announcement.classroomId) {
+        const room = await prisma.classroom.findUnique({
+          where: { id: announcement.classroomId },
+          select: {
+            teacherId: true,
+            students: { select: { id: true } },
+          },
+        });
+        if (room) {
+          recipientIds = [room.teacherId, ...room.students.map((s) => s.id)];
+        }
+      } else {
+        const users = await prisma.user.findMany({
+          where: {
+            schoolId: announcement.schoolId,
+            isActive: true,
+            ...(announcement.targetAudience === AnnouncementAudience.TEACHERS_ONLY
+              ? { role: Role.TEACHER }
+              : { role: { in: [Role.STUDENT, Role.TEACHER] } }),
+          },
+          select: { id: true },
+        });
+        recipientIds = users.map((u) => u.id);
+      }
+
+      if (recipientIds.length > 0) {
+        await realtimeNotificationService.notifyUsers(recipientIds, {
+          type: "NEW_ANNOUNCEMENT",
+          title: `Mural Escolar: ${announcement.title}`,
+          body: announcement.content.slice(0, 140),
+          route: "/",
+        });
+      }
+      return recipientIds.length;
+    } catch (err) {
+      console.warn("[AnnouncementService] Falha não-bloqueante ao notificar:", err);
+      return 0;
+    }
+  }
+
+  /**
+   * Worker periódico: dispara notificações de comunicados agendados cujo horário já chegou.
+   */
+  async dispatchDueScheduledAnnouncements() {
+    const now = new Date();
+    const dueList = await prisma.announcement.findMany({
+      where: {
+        scheduledFor: { lte: now },
+        notificationSentAt: null,
+      },
+      select: {
+        id: true,
+        schoolId: true,
+        title: true,
+        content: true,
+        targetAudience: true,
+        classroomId: true,
+      },
+      take: 25,
+    });
+
+    let dispatched = 0;
+    for (const ann of dueList) {
+      const claim = await prisma.announcement.updateMany({
+        where: { id: ann.id, notificationSentAt: null },
+        data: { notificationSentAt: now },
+      });
+      if (claim.count > 0) {
+        await this.notifyAnnouncementRecipients(ann);
+        dispatched += 1;
+      }
+    }
+
+    return { dispatched };
   }
 
   /**
@@ -89,6 +217,11 @@ export class AnnouncementService {
       schoolIds.push(user.schoolId);
     }
 
+    const now = new Date();
+    const publishedWindow = {
+      OR: [{ scheduledFor: null }, { scheduledFor: { lte: now } }],
+    };
+
     // Para Alunos: se não tiver schoolId direto, busca pelas turmas matriculadas
     if (user.role === Role.STUDENT) {
       const studentWithRooms = await prisma.user.findUnique({
@@ -96,10 +229,12 @@ export class AnnouncementService {
         select: {
           schoolId: true,
           enrolledClassrooms: {
-            select: { schoolId: true },
+            select: { id: true, schoolId: true },
           },
         },
       });
+
+      const enrolledRoomIds: string[] = [];
 
       if (studentWithRooms?.schoolId && !schoolIds.includes(studentWithRooms.schoolId)) {
         schoolIds.push(studentWithRooms.schoolId);
@@ -107,6 +242,7 @@ export class AnnouncementService {
 
       if (studentWithRooms?.enrolledClassrooms) {
         for (const room of studentWithRooms.enrolledClassrooms) {
+          enrolledRoomIds.push(room.id);
           if (room.schoolId && !schoolIds.includes(room.schoolId)) {
             schoolIds.push(room.schoolId);
           }
@@ -118,10 +254,14 @@ export class AnnouncementService {
           where: {
             targetAudience: AnnouncementAudience.ALL,
             title: { contains: "ENEM 2026" },
+            ...publishedWindow,
           },
           include: {
             school: {
               select: { id: true, name: true, code: true, slug: true },
+            },
+            classroom: {
+              select: { id: true, name: true },
             },
           },
           orderBy: { createdAt: "desc" },
@@ -132,11 +272,29 @@ export class AnnouncementService {
       return prisma.announcement.findMany({
         where: {
           schoolId: { in: schoolIds },
-          targetAudience: AnnouncementAudience.ALL,
+          AND: [
+            publishedWindow,
+            {
+              OR: [
+                { targetAudience: AnnouncementAudience.ALL },
+                ...(enrolledRoomIds.length > 0
+                  ? [
+                      {
+                        targetAudience: AnnouncementAudience.CLASSROOM,
+                        classroomId: { in: enrolledRoomIds },
+                      },
+                    ]
+                  : []),
+              ],
+            },
+          ],
         },
         include: {
           school: {
             select: { id: true, name: true, code: true, slug: true },
+          },
+          classroom: {
+            select: { id: true, name: true },
           },
         },
         orderBy: { createdAt: "desc" },
@@ -150,10 +308,12 @@ export class AnnouncementService {
         select: {
           schoolId: true,
           createdClassrooms: {
-            select: { schoolId: true },
+            select: { id: true, schoolId: true },
           },
         },
       });
+
+      const teacherRoomIds: string[] = [];
 
       if (teacherWithRooms?.schoolId && !schoolIds.includes(teacherWithRooms.schoolId)) {
         schoolIds.push(teacherWithRooms.schoolId);
@@ -161,6 +321,7 @@ export class AnnouncementService {
 
       if (teacherWithRooms?.createdClassrooms) {
         for (const room of teacherWithRooms.createdClassrooms) {
+          teacherRoomIds.push(room.id);
           if (room.schoolId && !schoolIds.includes(room.schoolId)) {
             schoolIds.push(room.schoolId);
           }
@@ -172,10 +333,14 @@ export class AnnouncementService {
           where: {
             targetAudience: AnnouncementAudience.ALL,
             title: { contains: "ENEM 2026" },
+            ...publishedWindow,
           },
           include: {
             school: {
               select: { id: true, name: true, code: true, slug: true },
+            },
+            classroom: {
+              select: { id: true, name: true },
             },
           },
           orderBy: { createdAt: "desc" },
@@ -186,13 +351,33 @@ export class AnnouncementService {
       return prisma.announcement.findMany({
         where: {
           schoolId: { in: schoolIds },
-          targetAudience: {
-            in: [AnnouncementAudience.ALL, AnnouncementAudience.TEACHERS_ONLY],
-          },
+          AND: [
+            publishedWindow,
+            {
+              OR: [
+                {
+                  targetAudience: {
+                    in: [AnnouncementAudience.ALL, AnnouncementAudience.TEACHERS_ONLY],
+                  },
+                },
+                ...(teacherRoomIds.length > 0
+                  ? [
+                      {
+                        targetAudience: AnnouncementAudience.CLASSROOM,
+                        classroomId: { in: teacherRoomIds },
+                      },
+                    ]
+                  : []),
+              ],
+            },
+          ],
         },
         include: {
           school: {
             select: { id: true, name: true, code: true, slug: true },
+          },
+          classroom: {
+            select: { id: true, name: true },
           },
         },
         orderBy: { createdAt: "desc" },
@@ -211,6 +396,9 @@ export class AnnouncementService {
           school: {
             select: { id: true, name: true, code: true, slug: true },
           },
+          classroom: {
+            select: { id: true, name: true },
+          },
         },
         orderBy: { createdAt: "desc" },
       });
@@ -222,6 +410,9 @@ export class AnnouncementService {
         include: {
           school: {
             select: { id: true, name: true, code: true, slug: true },
+          },
+          classroom: {
+            select: { id: true, name: true },
           },
         },
         orderBy: { createdAt: "desc" },
@@ -245,6 +436,9 @@ export class AnnouncementService {
       include: {
         school: {
           select: { id: true, name: true, code: true, slug: true },
+        },
+        classroom: {
+          select: { id: true, name: true },
         },
       },
       orderBy: { createdAt: "desc" },

@@ -34,6 +34,7 @@ import {
 } from '@/components/classroom/ClassroomFeedTab';
 import { ClassroomStudentsTab } from '@/components/classroom/ClassroomStudentsTab';
 import { ClassroomReadingModal } from '@/components/classroom/ClassroomReadingModal';
+import { QuestionFeedbackModal } from '@/components/classroom/QuestionFeedbackModal';
 import { api, BASE_URL } from '@/services/api';
 import { useTheme , useThemedStyles } from '@/hooks/use-theme';
 import { saveTasksLocal, getTasksLocal } from '@/database/schema';
@@ -50,6 +51,7 @@ export default function ClassroomDetailScreen() {
   const user = useUserStore((state) => state.user);
   const token = useUserStore((state) => state.token);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [feedbackModalVisible, setFeedbackModalVisible] = useState(false);
   const [qrInviteModal, setQrInviteModal] = useState<{
     visible: boolean;
     loading: boolean;
@@ -944,6 +946,48 @@ export default function ClassroomDetailScreen() {
                 <FontAwesome5 name="chevron-right" size={14} color="#0284C7" />
               </TouchableOpacity>
             )}
+
+            {/* Banner: Devolutivas em Áudio ou Comentário por Questão Errada (Professor e Aluno) */}
+            <TouchableOpacity
+              style={[
+                styles.highlightBanner,
+                {
+                  borderColor: theme.isDark ? '#3730A3' : '#C7D2FE',
+                  backgroundColor: theme.isDark ? '#1E293B' : '#EEF2FF',
+                  marginTop: -6,
+                },
+              ]}
+              activeOpacity={0.8}
+              onPress={() => setFeedbackModalVisible(true)}
+            >
+              <View style={[styles.actionIconBox, { backgroundColor: '#E0E7FF' }]}>
+                <FontAwesome5 name="microphone-alt" size={17} color="#4F46E5" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={[
+                    styles.actionCardTitle,
+                    { color: theme.isDark ? '#A5B4FC' : '#3730A3' },
+                  ]}
+                >
+                  Devolutivas por Questão Errada (Áudio & Comentários)
+                </Text>
+                <Text style={[styles.actionCardSub, { color: theme.textMuted }]}>
+                  {user?.role === 'TEACHER'
+                    ? 'Grave áudio ou comente as questões com mais erros para ajudar sua turma.'
+                    : 'Ouça explicações em áudio e leia dicas do professor sobre questões da turma.'}
+                </Text>
+              </View>
+              <FontAwesome5 name="chevron-right" size={14} color="#4F46E5" />
+            </TouchableOpacity>
+
+            <QuestionFeedbackModal
+              visible={feedbackModalVisible}
+              classroomId={classroom.id}
+              classroomName={classroom.name}
+              canSend={user?.role === 'TEACHER' || user?.role === 'ADMIN'}
+              onClose={() => setFeedbackModalVisible(false)}
+            />
 
             {/* Modal de QR Code de Convite */}
             <Modal

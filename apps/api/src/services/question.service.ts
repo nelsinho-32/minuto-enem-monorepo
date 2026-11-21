@@ -89,9 +89,40 @@ function extractKeywords(text: string): string[] {
   );
 }
 
+const SUBJECT_ALIAS_TO_SLUG: Record<string, string> = {
+  "ingles ou espanhou": "ingles-ou-espanhou",
+  "ingles e espanhol": "ingles-ou-espanhou",
+  "ingles": "ingles-ou-espanhou",
+  "espanhol": "ingles-ou-espanhou",
+  "redacao": "redacao",
+  "redacao enem": "redacao",
+  "lingua portuguesa": "lingua-portuguesa",
+  "portugues": "lingua-portuguesa",
+  "matematica": "matematica",
+  "historia": "historia",
+  "geografia": "geografia",
+  "filosofia": "filosofia",
+  "sociologia": "sociologia",
+  "biologia": "biologia",
+  "fisica": "fisica",
+  "quimica": "quimica",
+  "artes": "artes",
+  "educacao fisica": "educacao-fisica",
+  "literatura": "literatura",
+};
+
+function normalizeDifficultyInput(raw?: string): string | undefined {
+  if (!raw) return undefined;
+  const clean = normalizeComparable(raw);
+  if (clean === "easy" || clean === "facil") return "EASY";
+  if (clean === "medium" || clean === "medio") return "MEDIUM";
+  if (clean === "hard" || clean === "dificil") return "HARD";
+  return undefined;
+}
+
 export class QuestionService {
   /**
-   * Localiza uma Matéria (Subject) por ID, slug ou nome (tolerante a acentos e caixa).
+   * Localiza uma Matéria (Subject) por ID, slug ou nome (tolerante a acentos, caixa e aliases).
    */
   async resolveSubject(subjectIdOrSlug: string) {
     const clean = (subjectIdOrSlug || "").trim();
@@ -115,11 +146,13 @@ export class QuestionService {
 
     const normalizedTarget = normalizeComparable(clean);
     const slugTarget = slugifyText(clean);
+    const aliasedSlug = SUBJECT_ALIAS_TO_SLUG[normalizedTarget];
 
     const allSubjects = await prisma.subject.findMany();
     return (
       allSubjects.find(
         (s) =>
+          (aliasedSlug && s.slug === aliasedSlug) ||
           normalizeComparable(s.name) === normalizedTarget ||
           normalizeComparable(s.slug) === normalizedTarget ||
           slugifyText(s.name) === slugTarget ||
@@ -740,9 +773,21 @@ export class QuestionService {
    * Lista todas as questões ordenadas das mais recentes para as mais antigas.
    * Suporta filtro opcional por matéria (subject/subjectId), grande área (area) e tópico (topicId).
    */
-  async listQuestions(subject?: string, area?: string, topicId?: string) {
+  async listQuestions(
+    subject?: string,
+    area?: string,
+    topicId?: string,
+    difficulty?: string,
+    limit?: number
+  ) {
+    const normalizedDifficulty = normalizeDifficultyInput(difficulty);
+    const takeLimit = limit && Number.isFinite(limit) && limit > 0 ? Math.min(limit, 500) : undefined;
+
     if (topicId?.trim()) {
-      return this.getQuestionsByTopic(topicId.trim());
+      return this.getQuestionsByTopic(topicId.trim(), {
+        difficulty: normalizedDifficulty,
+        limit: takeLimit,
+      });
     }
 
     if (subject?.trim()) {
@@ -757,6 +802,7 @@ export class QuestionService {
               { subject: { equals: subject.trim(), mode: "insensitive" } },
             ],
             ...(area ? { area: { equals: area, mode: "insensitive" } } : {}),
+            ...(normalizedDifficulty ? { difficulty: normalizedDifficulty } : {}),
           },
           include: {
             topicRef: {
@@ -767,6 +813,7 @@ export class QuestionService {
             },
           },
           orderBy: { year: "desc" },
+          ...(takeLimit ? { take: takeLimit } : {}),
         });
       }
     }
@@ -775,6 +822,7 @@ export class QuestionService {
       where: {
         ...(subject ? { subject: { equals: subject, mode: "insensitive" } } : {}),
         ...(area ? { area: { equals: area, mode: "insensitive" } } : {}),
+        ...(normalizedDifficulty ? { difficulty: normalizedDifficulty } : {}),
       },
       include: {
         topicRef: {
@@ -785,6 +833,7 @@ export class QuestionService {
         },
       },
       orderBy: { year: "desc" },
+      ...(takeLimit ? { take: takeLimit } : {}),
     });
   }
 
